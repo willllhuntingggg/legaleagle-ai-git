@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Shield, Lock, Eye, EyeOff, Plus, Trash2, ArrowRight, ScanLine, Wand2, RefreshCcw, Highlighter } from 'lucide-react';
+import { Shield, Lock, Eye, EyeOff, Plus, Trash2, ArrowRight, ScanLine, Wand2, RefreshCcw, Highlighter, CreditCard } from 'lucide-react';
 import { MaskingMap } from '../types';
 
 interface PrivacyGuardProps {
@@ -39,19 +39,27 @@ const REGEX_PATTERNS = [
         label: '手机/身份证 (ID/Phone)', 
         regex: /(1[3-9]\d{9})|(\d{15}|\d{18})/g, 
         prefix: '[ID_' 
+    },
+    { 
+        id: 'bank',
+        label: '银行卡号 (Bank Card)', 
+        regex: /\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{3,4}\b/g, 
+        prefix: '[BANK_' 
     }
 ];
 
 export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onComplete, onSkip }) => {
     // Selection State
     const [manualRules, setManualRules] = useState<ManualRule[]>([]);
-    const [activeRegexes, setActiveRegexes] = useState<Set<string>>(new Set(['money', 'email', 'date', 'phone']));
+    const [activeRegexes, setActiveRegexes] = useState<Set<string>>(new Set(['money', 'email', 'date', 'phone', 'bank']));
     
     // UI State
     const [previewMode, setPreviewMode] = useState<'original' | 'masked'>('original');
     const [selection, setSelection] = useState<string>('');
     const [customPlaceholder, setCustomPlaceholder] = useState('');
+    const [popupPos, setPopupPos] = useState<{top: number, left: number} | null>(null);
     
+    const containerRef = useRef<HTMLDivElement>(null);
     const textRef = useRef<HTMLDivElement>(null);
 
     // Compute Masked Content & Map
@@ -94,12 +102,37 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
 
     const handleTextMouseUp = () => {
         const selectionObj = window.getSelection();
+        
+        // Ensure we have a valid selection that is not empty
         if (selectionObj && selectionObj.toString().trim().length > 0) {
-            setSelection(selectionObj.toString().trim());
-            // Suggest a placeholder based on content?
+            const text = selectionObj.toString().trim();
+            setSelection(text);
+            
+            // Default placeholder suggestion
             if (!customPlaceholder) {
                 setCustomPlaceholder('[PARTY_A]');
             }
+
+            // Calculate position relative to the scrolling container
+            if (selectionObj.rangeCount > 0 && containerRef.current) {
+                const range = selectionObj.getRangeAt(0);
+                const rect = range.getBoundingClientRect();
+                const containerRect = containerRef.current.getBoundingClientRect();
+                
+                // Position popup centered below the selection
+                // Add container.scrollTop to account for scrolling
+                setPopupPos({
+                    top: rect.bottom - containerRect.top + containerRef.current.scrollTop + 10,
+                    left: rect.left - containerRect.left + (rect.width / 2)
+                });
+            }
+        } else {
+            // If user clicks without selecting, clear the popup
+            // We check if the click was inside the popup (which is handled by stopPropagation usually, but good to be safe)
+            // Since this handler is on the text div, clicks outside text div won't trigger this.
+            // Clicks on text div that clear selection trigger this with empty string.
+            setSelection('');
+            setPopupPos(null);
         }
     };
 
@@ -112,6 +145,7 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
             }]);
             setSelection('');
             setCustomPlaceholder('');
+            setPopupPos(null);
             // Switch to preview to show effect
             setPreviewMode('masked');
         }
@@ -182,7 +216,7 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-8 relative">
+                    <div className="flex-1 overflow-y-auto p-8 relative" ref={containerRef}>
                          {previewMode === 'original' ? (
                              <div 
                                 ref={textRef}
@@ -202,15 +236,19 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                              </div>
                          )}
                          
-                         {/* Selection Float Menu */}
-                         {selection && previewMode === 'original' && (
-                             <div className="sticky bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white p-4 rounded-xl shadow-2xl flex flex-col gap-3 w-80 animate-in slide-in-from-bottom-4 z-50">
+                         {/* Selection Float Menu - Absolutely positioned relative to container */}
+                         {selection && previewMode === 'original' && popupPos && (
+                             <div 
+                                style={{ top: popupPos.top, left: popupPos.left }}
+                                onMouseUp={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+                                className="absolute -translate-x-1/2 bg-slate-800 text-white p-4 rounded-xl shadow-2xl flex flex-col gap-3 w-80 animate-in fade-in zoom-in-95 duration-150 z-50 origin-top"
+                             >
                                  <div className="flex justify-between items-start">
                                     <div>
                                         <div className="text-xs text-slate-400 mb-1">已选中内容:</div>
                                         <div className="font-mono text-sm font-bold truncate max-w-[200px] bg-slate-900 p-1 px-2 rounded">{selection}</div>
                                     </div>
-                                    <button onClick={() => setSelection('')} className="text-slate-500 hover:text-white"><Trash2 className="w-4 h-4" /></button>
+                                    <button onClick={() => { setSelection(''); setPopupPos(null); }} className="text-slate-500 hover:text-white"><Trash2 className="w-4 h-4" /></button>
                                  </div>
                                  <div className="flex gap-2">
                                      <input 
@@ -227,7 +265,7 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                                          替换
                                      </button>
                                  </div>
-                                 <div className="flex gap-2 overflow-x-auto pb-1">
+                                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                                      {['[PARTY_A]', '[PARTY_B]', '[COMPANY]', '[NAME]'].map(tag => (
                                          <button 
                                             key={tag}
@@ -238,6 +276,9 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                                          </button>
                                      ))}
                                  </div>
+                                 
+                                 {/* Arrow Pointer */}
+                                 <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-slate-800 rotate-45"></div>
                              </div>
                          )}
                     </div>

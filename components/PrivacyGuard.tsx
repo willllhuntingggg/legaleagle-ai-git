@@ -19,11 +19,10 @@ const REGEX_PATTERNS = [
     { 
         id: 'money',
         label: '金额 (Money)', 
-        // Matches:
-        // 1. Currency symbols ($100, ¥1,000.50)
-        // 2. Suffixes (100元, 1000 Dollars, RMB 100)
-        // 3. Chinese Uppercase (壹万圆整)
-        regex: /((RMB|¥|\$|€|£)\s?([1-9]\d{0,2}(,\d{3})*|0)(\.\d{1,2})?)|(([1-9]\d{0,2}(,\d{3})*|0)(\.\d{1,2})?\s?(元|万元|亿元|USD|Dollars))|([零壹贰叁肆伍陆柒捌玖拾佰仟万亿]+(元|圆))/g,
+        // Improved Regex:
+        // 1. Symbols: Matches $, ¥, ￥(fullwidth), £, €, RMB, CNY
+        // 2. Formats: 100,000.00 | 4万 | 100元 | 100美金
+        regex: /((RMB|CNY|¥|￥|\$|€|£)\s?([1-9]\d{0,2}(,\d{3})*|0)(\.\d{1,2})?)|(([1-9]\d{0,2}(,\d{3})*|0)(\.\d{1,2})?\s?(元|万元|亿元|万|亿|USD|Dollars|美金))/gi,
         prefix: '[AMOUNT_' 
     },
     { 
@@ -41,8 +40,11 @@ const REGEX_PATTERNS = [
     { 
         id: 'phone',
         label: '电话/传真 (Tel/Fax)', 
-        // Matches: Mobile (11 digits), Landline (3/4 digits - 7/8 digits), ID cards
-        regex: /((\+?86)?\s?1[3-9]\d{9})|(\d{3,4}-?\d{7,8})|(\d{15}|\d{18})/g, 
+        // Matches: 
+        // 1. Mobile (11 digits, optional +86)
+        // 2. Landline with loose spacing (010- 12345678)
+        // 3. ID cards (15 or 18 digits)
+        regex: /((\+?86)?\s?1[3-9]\d{9})|(\d{3,4}\s*[-]\s*\d{7,8})|(\d{15}|\d{18})/g, 
         prefix: '[PHONE_' 
     },
     { 
@@ -79,7 +81,7 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
             if (!rule.target) return;
             // Escape special regex chars in target string to ensure safe regex creation
             const escapedTarget = rule.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            // Global flag 'g' ensures ALL instances are replaced
+            // Global flag 'g' ensures ALL instances are replaced throughout the document
             const regex = new RegExp(escapedTarget, 'g');
             
             if (regex.test(text)) {
@@ -132,6 +134,7 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                 const containerRect = containerRef.current.getBoundingClientRect();
                 
                 // Position popup centered below the selection
+                // Add scrollTop to ensure it stays correct when scrolled
                 setPopupPos({
                     top: rect.bottom - containerRect.top + containerRef.current.scrollTop + 10,
                     left: rect.left - containerRect.left + (rect.width / 2)
@@ -209,7 +212,6 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                 <div className="flex-1 flex flex-col border-r border-gray-200 bg-white">
                     <div className="p-4 border-b flex justify-between items-center bg-gray-50/50">
                         <div className="flex bg-gray-200 rounded-lg p-1">
-                            {/* Static indicator since we merged modes */}
                             <div className="px-4 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 bg-white shadow text-blue-600">
                                 <Shield className="w-4 h-4" /> 
                                 交互式脱敏预览
@@ -217,7 +219,7 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                         </div>
                         <div className="text-xs text-gray-500 flex items-center gap-1">
                            <Highlighter className="w-3 h-3" />
-                           请直接选中下方文本以添加新的遮蔽规则 (全文替换)
+                           请直接选中下方文本以添加新的遮蔽规则 (将替换全文所有匹配项)
                         </div>
                     </div>
 

@@ -320,22 +320,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {privacyData && (
-            <div className="flex items-center bg-gray-100 rounded-lg p-1 mr-2">
-                <button 
-                    onClick={() => setIsMaskedView(true)}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-all ${isMaskedView ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                    <EyeOff className="w-3.5 h-3.5" /> 脱敏模式
-                </button>
-                <button 
-                    onClick={() => setIsMaskedView(false)}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-all ${!isMaskedView ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                    <Eye className="w-3.5 h-3.5" /> 原文模式
-                </button>
-            </div>
-          )}
+          {/* Privacy Toggle removed as requested */}
           {risks.length > 0 && (
             <button 
                 onClick={downloadContract}

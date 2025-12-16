@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Shield, Lock, Trash2, ArrowRight, Wand2, Highlighter, CreditCard, MapPin, Phone, Ban, Building2, User, Users, UserCircle } from 'lucide-react';
+import { Shield, Lock, Trash2, ArrowRight, Wand2, Highlighter, CreditCard, MapPin, Phone, Ban, Building2, User, Users, UserCircle, Briefcase, Eye, EyeOff } from 'lucide-react';
 import { MaskingMap } from '../types';
 
 interface PrivacyGuardProps {
@@ -67,6 +67,10 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
     const [selection, setSelection] = useState<string>('');
     const [customPlaceholder, setCustomPlaceholder] = useState('');
     const [popupPos, setPopupPos] = useState<{top: number, left: number} | null>(null);
+    const [viewMode, setViewMode] = useState<'masked' | 'original'>('masked');
+    
+    // Custom Tooltip State
+    const [hoverTooltip, setHoverTooltip] = useState<{text: string, x: number, y: number} | null>(null);
     
     const containerRef = useRef<HTMLDivElement>(null);
     const textRef = useRef<HTMLDivElement>(null);
@@ -193,8 +197,37 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
         setActiveRegexes(newSet);
     };
 
+    const handleMouseEnterTag = (e: React.MouseEvent, tag: string) => {
+        const original = computedData.map[tag];
+        if (original) {
+            const rect = (e.target as HTMLElement).getBoundingClientRect();
+            // Show tooltip above the element
+            setHoverTooltip({
+                text: original,
+                x: rect.left + rect.width / 2,
+                y: rect.top - 8 // Slight gap
+            });
+        }
+    };
+
+    const handleMouseLeaveTag = () => {
+        setHoverTooltip(null);
+    };
+
     return (
-        <div className="flex flex-col h-full bg-slate-50">
+        <div className="flex flex-col h-full bg-slate-50 relative">
+            {/* Custom Tooltip */}
+            {hoverTooltip && (
+                <div 
+                    className="fixed z-[100] px-3 py-1.5 bg-gray-900 text-white text-xs rounded shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full whitespace-nowrap animate-in fade-in duration-75 font-mono"
+                    style={{ top: hoverTooltip.y, left: hoverTooltip.x }}
+                >
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1 w-2 h-2 bg-gray-900 rotate-45"></div>
+                    <span className="text-gray-400 mr-2">原文:</span>
+                    <span className="font-bold">{hoverTooltip.text}</span>
+                </div>
+            )}
+
             {/* Header */}
             <div className="bg-slate-900 px-6 py-4 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
@@ -211,7 +244,7 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                         onClick={onSkip}
                         className="text-slate-400 hover:text-white text-sm px-4"
                     >
-                        跳过 (直接上传原文)
+                        跳过 (直接审查原文)
                     </button>
                     <button 
                         onClick={() => onComplete(computedData.text, computedData.map)}
@@ -228,10 +261,20 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                 <div className="flex-1 flex flex-col border-r border-gray-200 bg-white">
                     <div className="p-4 border-b flex justify-between items-center bg-gray-50/50 shrink-0">
                         <div className="flex bg-gray-200 rounded-lg p-1">
-                            <div className="px-4 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 bg-white shadow text-blue-600">
-                                <Shield className="w-4 h-4" /> 
-                                交互式脱敏预览
-                            </div>
+                             <button 
+                                onClick={() => setViewMode('masked')}
+                                className={`px-4 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-all ${viewMode === 'masked' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                <EyeOff className="w-4 h-4" /> 
+                                脱敏模式
+                            </button>
+                            <button 
+                                onClick={() => setViewMode('original')}
+                                className={`px-4 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-all ${viewMode === 'original' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                <Eye className="w-4 h-4" /> 
+                                原文模式
+                            </button>
                         </div>
                         <div className="text-xs text-gray-500 flex items-center gap-1">
                            <Highlighter className="w-3 h-3" />
@@ -246,28 +289,32 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                             onMouseUp={handleTextMouseUp}
                             className="font-mono text-sm leading-relaxed whitespace-pre-wrap text-gray-600 selection:bg-blue-200 selection:text-blue-900 min-h-[500px]"
                          >
-                             {computedData.text.split(/(\[.*?\])/g).map((part, idx) => {
-                                 // Identify tags and render them as chips
-                                 if (part.startsWith('[') && part.endsWith(']')) {
-                                     // Check if this tag comes from a manual rule or regex (for styling)
-                                     const isManual = manualRules.some(r => r.placeholder === part);
-                                     const originalText = computedData.map[part];
-                                     
-                                     return (
-                                         <span 
-                                            key={idx} 
-                                            className={`
-                                                px-1.5 py-0.5 rounded mx-0.5 text-xs font-bold border select-none inline-block cursor-help transition-colors
-                                                ${isManual ? 'bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200' : 'bg-gray-200 text-gray-700 border-gray-300 hover:bg-gray-300'}
-                                            `}
-                                            title={`原文: ${originalText || '未知'}`}
-                                         >
-                                             {part}
-                                         </span>
-                                     )
-                                 }
-                                 return part;
-                             })}
+                             {viewMode === 'original' ? (
+                                 <span>{originalContent}</span>
+                             ) : (
+                                 computedData.text.split(/(\[.*?\])/g).map((part, idx) => {
+                                     // Identify tags and render them as chips
+                                     if (part.startsWith('[') && part.endsWith(']')) {
+                                         // Check if this tag comes from a manual rule or regex (for styling)
+                                         const isManual = manualRules.some(r => r.placeholder === part);
+                                         
+                                         return (
+                                             <span 
+                                                key={idx} 
+                                                onMouseEnter={(e) => handleMouseEnterTag(e, part)}
+                                                onMouseLeave={handleMouseLeaveTag}
+                                                className={`
+                                                    px-1.5 py-0.5 rounded mx-0.5 text-xs font-bold border select-none inline-block cursor-help transition-colors
+                                                    ${isManual ? 'bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200' : 'bg-gray-200 text-gray-700 border-gray-300 hover:bg-gray-300'}
+                                                `}
+                                             >
+                                                 {part}
+                                             </span>
+                                         )
+                                     }
+                                     return part;
+                                 })
+                             )}
                          </div>
                          
                          {/* Selection Float Menu - Absolutely positioned relative to container */}
@@ -275,52 +322,66 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                              <div 
                                 style={{ top: popupPos.top, left: popupPos.left }}
                                 onMouseUp={(e) => e.stopPropagation()} // Prevent closing when clicking inside
-                                className="absolute -translate-x-1/2 bg-slate-800 text-white p-4 rounded-xl shadow-2xl flex flex-col gap-3 w-80 animate-in fade-in zoom-in-95 duration-150 z-50 origin-top"
+                                className="absolute -translate-x-1/2 bg-slate-800 text-white p-5 rounded-xl shadow-2xl flex flex-col gap-4 w-80 animate-in fade-in zoom-in-95 duration-150 z-50 origin-top border border-slate-700"
                              >
-                                 <div className="flex justify-between items-start">
-                                    <div>
-                                        <div className="text-xs text-slate-400 mb-1">将选中内容替换为:</div>
-                                        <div className="font-mono text-sm font-bold truncate max-w-[200px] bg-slate-900 p-1 px-2 rounded border border-slate-700">{selection}</div>
+                                 <div className="flex justify-between items-start border-b border-slate-700 pb-3">
+                                    <div className="w-full">
+                                        <div className="flex flex-col gap-2">
+                                            <div>
+                                                <div className="text-[10px] uppercase text-slate-500 font-bold tracking-wider mb-1">将选中的内容</div>
+                                                <div className="font-mono text-xs font-medium bg-slate-900/50 p-1.5 px-2 rounded text-slate-200 border border-slate-700/50 break-all">
+                                                    {selection}
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-center">
+                                                <ArrowRight className="w-4 h-4 text-slate-500 rotate-90 my-[-4px]" />
+                                            </div>
+                                            <div>
+                                                <div className="text-[10px] uppercase text-slate-500 font-bold tracking-wider mb-1">替换为标签</div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <button onClick={() => { setSelection(''); setPopupPos(null); }} className="text-slate-500 hover:text-white"><Trash2 className="w-4 h-4" /></button>
+                                    <button onClick={() => { setSelection(''); setPopupPos(null); }} className="text-slate-500 hover:text-white ml-2"><Trash2 className="w-4 h-4" /></button>
                                  </div>
+                                 
                                  <div className="flex gap-2">
                                      <input 
                                         value={customPlaceholder}
                                         onChange={(e) => setCustomPlaceholder(e.target.value)}
-                                        placeholder="输入标签 (如 [PARTY_A])" 
-                                        className="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                        placeholder="如 [PARTY_A]" 
+                                        className="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono"
                                      />
                                      <button 
                                         onClick={addManualRule}
                                         disabled={!customPlaceholder}
-                                        className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-sm font-bold"
+                                        className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded text-sm font-bold shadow-lg shadow-blue-900/20"
                                      >
-                                         替换
+                                         确定
                                      </button>
                                  </div>
+                                 
                                  <div className="grid grid-cols-3 gap-2 pb-1">
                                      {[
-                                         { label: '[PARTY_A]', icon: <User className="w-3 h-3" /> },
-                                         { label: '[PARTY_B]', icon: <Users className="w-3 h-3" /> },
+                                         { label: '[PARTY_A]', icon: <Building2 className="w-3 h-3" /> },
+                                         { label: '[PARTY_B]', icon: <Building2 className="w-3 h-3" /> },
                                          { label: '[ADDRESS]', icon: <MapPin className="w-3 h-3" /> },
-                                         { label: '[COMPANY]', icon: <Building2 className="w-3 h-3" /> },
+                                         { label: '[PROJECT]', icon: <Briefcase className="w-3 h-3" /> },
                                          { label: '[NAME]', icon: <UserCircle className="w-3 h-3" /> },
                                          { label: '[ID_NUM]', icon: <CreditCard className="w-3 h-3" /> }
                                      ].map(tag => (
                                          <button 
                                             key={tag.label}
                                             onClick={() => setCustomPlaceholder(tag.label)}
-                                            className="flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-700 rounded text-xs hover:bg-slate-600 transition-colors border border-slate-600 hover:border-slate-500"
+                                            className="flex items-center justify-center gap-1.5 px-2 py-1.5 bg-slate-700/50 rounded text-xs hover:bg-slate-600 transition-colors border border-slate-600/50 hover:border-slate-500 text-slate-300 hover:text-white"
                                          >
                                              {tag.icon}
-                                             {tag.label}
+                                             <span className="font-mono">{tag.label}</span>
                                          </button>
                                      ))}
                                  </div>
                                  
                                  {/* Arrow Pointer */}
-                                 <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-slate-800 rotate-45"></div>
+                                 <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-slate-800 rotate-45 border-t border-l border-slate-700"></div>
                              </div>
                          )}
                     </div>

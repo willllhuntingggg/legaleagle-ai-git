@@ -335,8 +335,12 @@ const App: React.FC = () => {
     }
   };
 
+  // Determine if the current page handles its own scrolling (Application-like view)
+  const isAppView = currentPage === Page.PRIVACY_GUARD || currentPage === Page.REVIEW;
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex relative">
+    // Changed: h-screen and overflow-hidden to create a fixed viewport application shell
+    <div className="h-screen bg-slate-50 text-slate-900 font-sans flex overflow-hidden">
       {/* Upload Guide Modal */}
       {showUploadGuide && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -374,15 +378,15 @@ const App: React.FC = () => {
                           onClick={confirmUpload}
                           className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold flex items-center gap-2 transition-colors shadow-lg shadow-blue-200"
                       >
-                          确认并开始审查 <ArrowRight className="w-4 h-4" />
+                          确认上传 <ArrowRight className="w-4 h-4" />
                       </button>
                   </div>
               </div>
           </div>
       )}
 
-      {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col sticky top-0 h-screen">
+      {/* Sidebar - Changed to h-full and overflow-y-auto since parent is fixed */}
+      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full overflow-y-auto shrink-0">
         <div className="p-6 border-b border-slate-800">
           <div className="flex items-center gap-2 text-white font-bold text-xl">
              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">L</div>
@@ -430,8 +434,8 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      {/* Main Content - Conditionally apply overflow logic */}
+      <main className={`flex-1 flex flex-col ${isAppView ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         {renderContent()}
       </main>
     </div>

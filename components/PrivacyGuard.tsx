@@ -92,9 +92,18 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
         sortedRules.forEach(rule => {
             if (!rule.target) return;
             // Escape special regex chars in target string to ensure safe regex creation
-            const escapedTarget = rule.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            let patternString = rule.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            
+            // SMART BRACKET SUBSTITUTION:
+            // If the user selected text with brackets, we want to match BOTH full-width '（）' and half-width '()'
+            // regardless of which one they selected.
+            // Replace literal (escaped) '(' or raw '（' with class containing both
+            patternString = patternString.replace(/(\\\(|（)/g, '[\\(（]');
+            // Replace literal (escaped) ')' or raw '）' with class containing both
+            patternString = patternString.replace(/(\\\)|）)/g, '[\\)）]');
+
             // Global flag 'g' ensures ALL instances are replaced throughout the document
-            const regex = new RegExp(escapedTarget, 'g');
+            const regex = new RegExp(patternString, 'g');
             
             if (regex.test(text)) {
                 map[rule.placeholder] = rule.target;
@@ -214,7 +223,7 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                         className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-900/50"
                     >
                         <Lock className="w-4 h-4" />
-                        生成脱敏文件并审查
+                        审查脱敏文件
                     </button>
                 </div>
             </div>
@@ -222,7 +231,7 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
             <div className="flex flex-1 overflow-hidden">
                 {/* Left: Text Editor/Preview */}
                 <div className="flex-1 flex flex-col border-r border-gray-200 bg-white">
-                    <div className="p-4 border-b flex justify-between items-center bg-gray-50/50">
+                    <div className="p-4 border-b flex justify-between items-center bg-gray-50/50 shrink-0">
                         <div className="flex bg-gray-200 rounded-lg p-1">
                             <div className="px-4 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 bg-white shadow text-blue-600">
                                 <Shield className="w-4 h-4" /> 
@@ -235,7 +244,7 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-8 relative" ref={containerRef}>
+                    <div className="flex-1 overflow-y-auto p-8 relative scroll-smooth" ref={containerRef}>
                          {/* Render Computed Text with interactive capabilities */}
                          <div 
                             ref={textRef}
@@ -322,14 +331,15 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                 </div>
 
                 {/* Right: Rules Panel */}
-                <div className="w-80 bg-slate-50 border-l border-gray-200 flex flex-col">
-                    <div className="p-5 border-b border-gray-200 bg-white">
+                <div className="w-80 bg-slate-50 border-l border-gray-200 flex flex-col shrink-0">
+                    <div className="p-5 border-b border-gray-200 bg-white shrink-0">
                         <h3 className="font-bold text-gray-800 flex items-center gap-2">
                             <Wand2 className="w-4 h-4 text-purple-600" />
                             自动规则 (Regex)
                         </h3>
                     </div>
-                    <div className="p-4 space-y-3 border-b border-gray-200">
+                    {/* Regex List - Now scrollable if needed */}
+                    <div className="p-4 space-y-3 border-b border-gray-200 overflow-y-auto max-h-60 shrink-0">
                         {REGEX_PATTERNS.map(p => (
                             <label key={p.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:border-blue-300 transition-all select-none">
                                 <div className="flex items-center gap-3">
@@ -346,12 +356,13 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                         ))}
                     </div>
 
-                    <div className="p-5 border-b border-gray-200 bg-white mt-2">
+                    <div className="p-5 border-b border-gray-200 bg-white mt-2 shrink-0">
                         <h3 className="font-bold text-gray-800 flex items-center gap-2">
                             <Highlighter className="w-4 h-4 text-blue-600" />
                             手动替换列表
                         </h3>
                     </div>
+                    {/* Manual List - Takes remaining space and scrolls */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-2">
                         {manualRules.length === 0 ? (
                             <div className="text-center py-8 text-gray-400 text-sm">
@@ -378,7 +389,7 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                         )}
                     </div>
                     
-                    {/* Stats Footer - Added shrink-0 to prevent it from disappearing */}
+                    {/* Stats Footer - Always visible because of flex layout */}
                     <div className="p-4 bg-white border-t border-gray-200 text-xs text-gray-500 flex justify-between shrink-0">
                          <span>已掩盖敏感词:</span>
                          <span className="font-bold text-gray-800">{Object.keys(computedData.map).length} 处</span>

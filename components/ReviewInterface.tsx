@@ -105,21 +105,76 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
     }
   };
 
+  const handleSelectRisk = (riskId: string) => {
+    setSelectedRiskId(riskId);
+    setTimeout(() => {
+        const el = highlightRefs.current[riskId];
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, 50);
+  };
+
+  const advanceToNextRisk = (currentId: string, currentRisks: RiskPoint[]) => {
+      const activeRisks = currentRisks.filter(r => !r.isAddressed);
+      if (activeRisks.length === 0) {
+          setSelectedRiskId(null);
+          return;
+      }
+
+      // Find where the just-addressed risk was in the full list
+      const currentIndexInFull = currentRisks.findIndex(r => r.id === currentId);
+      
+      // Try to find the next active risk appearing AFTER this position in the original document order
+      let nextRisk = currentRisks.find((r, i) => !r.isAddressed && i > currentIndexInFull);
+      
+      // If none after, wrap to the first active risk available (beginning of doc)
+      if (!nextRisk) {
+          nextRisk = activeRisks[0];
+      }
+      
+      if (nextRisk) {
+          handleSelectRisk(nextRisk.id);
+      }
+  };
+
   const handleAcceptRisk = (risk: RiskPoint) => {
-    // We update the underlying text (which might be masked)
+    // 1. Update text
     const newText = currentText.replace(risk.originalText, risk.suggestedText);
     setCurrentText(newText);
-    setRisks(prev => prev.map(r => r.id === risk.id ? { ...r, isAddressed: true } : r));
     
-    const remaining = risks.filter(r => !r.isAddressed && r.id !== risk.id);
-    if (remaining.length === 0) {
-        setSelectedRiskId(null);
-    }
+    // 2. Update Risk State
+    const updatedRisks = risks.map(r => r.id === risk.id ? { ...r, isAddressed: true } : r);
+    setRisks(updatedRisks);
+    
+    // 3. Auto-advance to next risk
+    advanceToNextRisk(risk.id, updatedRisks);
   };
 
   const handleIgnoreRisk = (riskId: string) => {
-    setRisks(prev => prev.map(r => r.id === riskId ? { ...r, isAddressed: true } : r));
-    setSelectedRiskId(null);
+    const updatedRisks = risks.map(r => r.id === riskId ? { ...r, isAddressed: true } : r);
+    setRisks(updatedRisks);
+    advanceToNextRisk(riskId, updatedRisks);
+  };
+
+  const navigateRisk = (direction: 'next' | 'prev') => {
+      const activeRisks = risks.filter(r => !r.isAddressed);
+      if (activeRisks.length === 0) return;
+
+      let currentIndex = activeRisks.findIndex(r => r.id === selectedRiskId);
+      
+      // If current selection is not in active set (e.g. just resolved), treat as starting from -1
+      // so Next (+1) goes to 0 (first active), Prev (-1-1=-2) wraps to end.
+      if (currentIndex === -1) {
+          currentIndex = -1;
+      }
+
+      let nextIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+      
+      if (nextIndex >= activeRisks.length) nextIndex = 0;
+      if (nextIndex < 0) nextIndex = activeRisks.length - 1;
+
+      handleSelectRisk(activeRisks[nextIndex].id);
   };
 
   const downloadContract = () => {
@@ -131,28 +186,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
     element.download = `Reviewed_${contract.fileName}.doc`;
     document.body.appendChild(element);
     element.click();
-  };
-
-  const handleSelectRisk = (riskId: string) => {
-    setSelectedRiskId(riskId);
-    setTimeout(() => {
-        const el = highlightRefs.current[riskId];
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    }, 50);
-  };
-
-  const navigateRisk = (direction: 'next' | 'prev') => {
-      const activeRisks = risks.filter(r => !r.isAddressed);
-      const currentIndex = activeRisks.findIndex(r => r.id === selectedRiskId);
-      if (currentIndex === -1) return;
-
-      let nextIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
-      if (nextIndex >= activeRisks.length) nextIndex = 0;
-      if (nextIndex < 0) nextIndex = activeRisks.length - 1;
-
-      handleSelectRisk(activeRisks[nextIndex].id);
   };
 
   const renderDocumentContent = () => {
@@ -213,7 +246,13 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
   };
 
   const selectedRisk = risks.find(r => r.id === selectedRiskId);
-  const activeCount = risks.filter(r => !r.isAddressed).length;
+  // We calculate active risks for the drawer counter
+  const activeRisks = risks.filter(r => !r.isAddressed);
+  const activeCount = activeRisks.length;
+  // If selected risk is addressed, indexOf returns -1. We display '-' instead of 0 for clarity.
+  const currentIndexDisplay = selectedRisk && !selectedRisk.isAddressed 
+      ? activeRisks.findIndex(r => r.id === selectedRisk.id) + 1 
+      : '-';
 
   return (
     <div className="flex flex-col h-full bg-slate-50 relative">
@@ -466,7 +505,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                         <ChevronLeft className="w-5 h-5" />
                     </button>
                     <span className="text-xs text-gray-400 font-mono">
-                        {risks.filter(r => !r.isAddressed).indexOf(selectedRisk) + 1} / {activeCount}
+                        {currentIndexDisplay} / {activeCount}
                     </span>
                     <button onClick={() => navigateRisk('next')} className="p-1.5 hover:bg-gray-200 rounded text-gray-600" title="Next Risk">
                         <ChevronRight className="w-5 h-5" />

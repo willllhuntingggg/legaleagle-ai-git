@@ -349,7 +349,8 @@ const App: React.FC = () => {
   };
 
   // Determine if the current page handles its own scrolling (Application-like view)
-  const isAppView = currentPage === Page.PRIVACY_GUARD || currentPage === Page.REVIEW || currentPage === Page.DRAFT;
+  // Added Page.KNOWLEDGE to enable full-screen layout for it
+  const isAppView = currentPage === Page.PRIVACY_GUARD || currentPage === Page.REVIEW || currentPage === Page.DRAFT || currentPage === Page.KNOWLEDGE;
 
   return (
     // Changed: h-screen and overflow-hidden to create a fixed viewport application shell

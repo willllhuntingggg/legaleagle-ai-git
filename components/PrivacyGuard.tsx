@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import { Shield, Lock, Trash2, ArrowRight, Wand2, Highlighter, CreditCard, MapPin, Phone, Ban, Building2 } from 'lucide-react';
+import { Shield, Lock, Trash2, ArrowRight, Wand2, Highlighter, CreditCard, MapPin, Phone, Ban, Building2, User, Users, UserCircle } from 'lucide-react';
 import { MaskingMap } from '../types';
 
 interface PrivacyGuardProps {
@@ -24,15 +24,6 @@ const REGEX_PATTERNS = [
         // 2. Formats: 100,000.00 | 4万 | 100元 | 100美金
         regex: /((RMB|CNY|¥|￥|\$|€|£)\s?([1-9]\d{0,2}(,\d{3})*|0)(\.\d{1,2})?)|(([1-9]\d{0,2}(,\d{3})*|0)(\.\d{1,2})?\s?(元|万元|亿元|万|亿|USD|Dollars|美金))/gi,
         prefix: '[AMOUNT_' 
-    },
-    { 
-        id: 'company',
-        label: '公司名称 (Company)',
-        // Matches typical company names ending in specific suffixes
-        // Support full-width brackets （）, half-width brackets (), and spaces inside the name
-        // Example: 环球时报在线（北京）文化传播有限公司
-        regex: /[\u4e00-\u9fa5a-zA-Z0-9（）()\s]{2,50}(?:有限公司|责任公司|集团|分公司|Co\.,\s?Ltd|Inc\.|Corp\.)/g,
-        prefix: '[COMPANY_'
     },
     { 
         id: 'email',
@@ -70,7 +61,7 @@ const REGEX_PATTERNS = [
 export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onComplete, onSkip }) => {
     // Selection State
     const [manualRules, setManualRules] = useState<ManualRule[]>([]);
-    // Default active regexes: REMOVED 'company' by default as per user request to avoid auto-replacement of specific companies
+    // Default active regexes: REMOVED 'company' entirely
     const [activeRegexes, setActiveRegexes] = useState<Set<string>>(new Set(['money', 'email', 'date', 'phone', 'bank']));
     
     // UI State
@@ -306,11 +297,11 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                                  </div>
                                  <div className="grid grid-cols-3 gap-2 pb-1">
                                      {[
-                                         { label: '[PARTY_A]', icon: null },
-                                         { label: '[PARTY_B]', icon: null },
+                                         { label: '[PARTY_A]', icon: <User className="w-3 h-3" /> },
+                                         { label: '[PARTY_B]', icon: <Users className="w-3 h-3" /> },
                                          { label: '[ADDRESS]', icon: <MapPin className="w-3 h-3" /> },
                                          { label: '[COMPANY]', icon: <Building2 className="w-3 h-3" /> },
-                                         { label: '[NAME]', icon: null },
+                                         { label: '[NAME]', icon: <UserCircle className="w-3 h-3" /> },
                                          { label: '[ID_NUM]', icon: <CreditCard className="w-3 h-3" /> }
                                      ].map(tag => (
                                          <button 

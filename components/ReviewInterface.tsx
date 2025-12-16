@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ContractData, ContractStance, ReviewStrictness, RiskPoint, RiskLevel, ContractSummary, ReviewSession, PrivacySessionData, MaskingMap } from '../types';
 import { analyzeContractRisks, generateContractSummary } from '../services/geminiService';
@@ -69,20 +68,37 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
     }
   }, [contract, initialSession, privacyData]);
 
+  // Derived State: Valid Risks
+  // Filters out risks that are not found in current text (hallucinations or obsolete)
+  // unless they are explicitly marked as addressed (history).
+  const visibleRisks = useMemo(() => {
+    return risks.filter(r => {
+        if (r.isAddressed) return true;
+        return currentText.includes(r.originalText);
+    });
+  }, [risks, currentText]);
+
   // Computed: Active risks sorted by position in the text
   // This ensures the "1 of 5" numbering and Next/Prev buttons follow visual order
   const sortedActiveRisks = useMemo(() => {
-    return risks
+    return visibleRisks
       .filter(r => !r.isAddressed)
       .sort((a, b) => {
           const idxA = currentText.indexOf(a.originalText);
           const idxB = currentText.indexOf(b.originalText);
-          // If text not found (e.g. modified), push to end
-          if (idxA === -1) return 1;
-          if (idxB === -1) return -1;
           return idxA - idxB;
       });
-  }, [risks, currentText]);
+  }, [visibleRisks, currentText]);
+
+  // Auto-scroll effect for selection changes
+  useEffect(() => {
+    if (selectedRiskId && highlightRefs.current[selectedRiskId]) {
+        highlightRefs.current[selectedRiskId]?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+        });
+    }
+  }, [selectedRiskId]);
 
   // Helper to unmask text
   const unmaskText = (text: string): string => {
@@ -135,6 +151,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
 
   const handleSelectRisk = (riskId: string) => {
     setSelectedRiskId(riskId);
+    // Note: Scroll handled by useEffect, but we keep this manual check as backup
     setTimeout(() => {
         const el = highlightRefs.current[riskId];
         if (el) {
@@ -157,8 +174,17 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
     const prev = history[history.length - 1];
     setCurrentText(prev.text);
     setRisks(prev.risks);
-    // Restore selection to the risk we just undid (so user can see it again)
-    setSelectedRiskId(prev.selectedId);
+    
+    // Restore selection and force scroll
+    if (prev.selectedId) {
+        setSelectedRiskId(prev.selectedId);
+        setTimeout(() => {
+            const el = highlightRefs.current[prev.selectedId!];
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }, 100);
+    }
     
     // Remove last history entry
     setHistory(prevHistory => prevHistory.slice(0, -1));
@@ -320,7 +346,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
               newParts.push({ 
                   text: segment.matchText, 
                   riskId: segment.id, 
-                  level: segment.level,
+                  level: segment.level, 
                   isAnimating: segment.isAnimating 
                 });
             }
@@ -345,7 +371,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                        <span 
                             key={idx}
                             id={`highlight-${part.riskId}`}
-                            ref={el => highlightRefs.current[part.riskId!] = el}
+                            ref={el => { highlightRefs.current[part.riskId!] = el; }}
                             className="bg-green-100 text-green-800 ring-2 ring-green-400/50 rounded px-1 transition-all duration-1000 ease-out animate-in fade-in zoom-in-95"
                        >
                            {displayText}
@@ -357,7 +383,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                 <span 
                   key={idx} 
                   id={`highlight-${part.riskId}`}
-                  ref={el => highlightRefs.current[part.riskId!] = el}
+                  ref={el => { highlightRefs.current[part.riskId!] = el; }}
                   onClick={() => handleSelectRisk(part.riskId!)}
                   className={`cursor-pointer border-b-2 transition-colors duration-200 scroll-mt-32 ${
                     selectedRiskId === part.riskId ? 'bg-blue-600 text-white border-blue-800 px-1 rounded shadow-sm' :
@@ -541,11 +567,11 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                             onClick={() => jumpToFirstRisk()}
                             className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:border-blue-300 hover:shadow-md cursor-pointer transition-all group"
                         >
-                            <div className="text-3xl font-bold text-gray-800 mb-1 group-hover:text-blue-600">{risks.length}</div>
+                            <div className="text-3xl font-bold text-gray-800 mb-1 group-hover:text-blue-600">{visibleRisks.length}</div>
                             <div className="text-xs text-gray-500 uppercase font-medium">风险总数</div>
                         </div>
                         <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                            <div className="text-3xl font-bold text-green-600 mb-1">{risks.filter(r => r.isAddressed).length}</div>
+                            <div className="text-3xl font-bold text-green-600 mb-1">{visibleRisks.filter(r => r.isAddressed).length}</div>
                             <div className="text-xs text-gray-500 uppercase font-medium">已处理</div>
                         </div>
                     </div>
@@ -565,7 +591,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                                     <span className="text-sm font-medium text-gray-700">高风险 (High)</span>
                                 </div>
                                 <span className="text-sm font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded">
-                                    {risks.filter(r => r.level === RiskLevel.HIGH && !r.isAddressed).length}
+                                    {sortedActiveRisks.filter(r => r.level === RiskLevel.HIGH).length}
                                 </span>
                             </div>
                             <div 
@@ -577,7 +603,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                                     <span className="text-sm font-medium text-gray-700">中风险 (Medium)</span>
                                 </div>
                                 <span className="text-sm font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded">
-                                    {risks.filter(r => r.level === RiskLevel.MEDIUM && !r.isAddressed).length}
+                                    {sortedActiveRisks.filter(r => r.level === RiskLevel.MEDIUM).length}
                                 </span>
                             </div>
                             <div 
@@ -589,7 +615,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                                     <span className="text-sm font-medium text-gray-700">低风险 (Low)</span>
                                 </div>
                                 <span className="text-sm font-bold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded">
-                                    {risks.filter(r => r.level === RiskLevel.LOW && !r.isAddressed).length}
+                                    {sortedActiveRisks.filter(r => r.level === RiskLevel.LOW).length}
                                 </span>
                             </div>
                         </div>

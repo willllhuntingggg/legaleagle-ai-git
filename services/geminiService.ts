@@ -98,12 +98,48 @@ const callMoonshotAI = async (messages: any[], apiKey?: string, jsonMode: boolea
 
 // Parse JSON from potentially Markdown-wrapped string
 const safeJsonParse = (text: string, defaultVal: any) => {
+    if (!text) return defaultVal;
+    
     try {
-        // Strip markdown code blocks if present (e.g. ```json ... ```)
-        const cleaned = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-        return JSON.parse(cleaned);
-    } catch (e) {
-        console.error("JSON Parsing failed", e);
+        // 1. Try standard JSON.parse first
+        return JSON.parse(text);
+    } catch (e1) {
+        // 2. Try extracting from Markdown code blocks
+        const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+        if (match) {
+            try { return JSON.parse(match[1]); } catch (e2) {}
+        }
+
+        // 3. Try finding the substring between the first [ and last ] (for arrays) 
+        // or first { and last } (for objects)
+        try {
+            const firstBracket = text.indexOf('[');
+            const lastBracket = text.lastIndexOf(']');
+            const firstBrace = text.indexOf('{');
+            const lastBrace = text.lastIndexOf('}');
+
+            let start = -1;
+            let end = -1;
+
+            // Decide whether to look for Array or Object based on what appears first
+            if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+                 if (lastBracket > firstBracket) {
+                    start = firstBracket;
+                    end = lastBracket;
+                 }
+            } else if (firstBrace !== -1) {
+                 if (lastBrace > firstBrace) {
+                    start = firstBrace;
+                    end = lastBrace;
+                 }
+            }
+
+            if (start !== -1 && end !== -1) {
+                return JSON.parse(text.substring(start, end + 1));
+            }
+        } catch (e3) {}
+
+        console.error("JSON Parsing failed completely", text.substring(0, 100));
         return defaultVal;
     }
 };
@@ -219,8 +255,35 @@ export const analyzeContractRisks = async (
             content = await callMoonshotAI(messages, apiKey, true);
         }
         
-        const rawRisks = safeJsonParse(content, []);
+        let rawRisks = safeJsonParse(content, []);
+        
+        // --- SAFETY CHECK: Ensure result is an Array ---
+        // Kimi/Qwen sometimes return a single object OR { "result": [...] } even if asked for array.
+        if (!Array.isArray(rawRisks)) {
+            if (rawRisks && typeof rawRisks === 'object') {
+                // Case 1: The response is a single Risk object (has keys like originalText or riskDescription)
+                if (rawRisks.originalText || rawRisks.riskDescription || rawRisks.reason) {
+                    rawRisks = [rawRisks];
+                }
+                // Case 2: The response is a wrapper object like { risks: [...] }
+                else {
+                    const values = Object.values(rawRisks);
+                    const foundArray = values.find(v => Array.isArray(v));
+                    if (foundArray) {
+                        rawRisks = foundArray;
+                    } else {
+                        console.warn("Parsed object but found no array or risk data:", rawRisks);
+                        rawRisks = []; // Fallback to empty to prevent crash
+                    }
+                }
+            } else {
+                console.warn("Parsed result is not an array or object:", rawRisks);
+                rawRisks = [];
+            }
+        }
+
         const providerPrefix = provider === ModelProvider.QWEN ? 'qwen' : 'kimi';
+        // Now safe to map
         return rawRisks.map((r: any, index: number) => ({ ...r, id: `risk-${providerPrefix}-${index}-${Date.now()}`, isAddressed: false }));
       } catch (e) {
         console.error(`${provider} Analysis Failed`, e);

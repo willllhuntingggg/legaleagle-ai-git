@@ -14,14 +14,14 @@ const getGeminiApiKey = () => {
   }
 };
 
-// Alibaba Qwen Configuration
-const QWEN_API_KEY = "sk-48d1263fb12944c5a307f090e2f66b10";
+// Alibaba Qwen Configuration (Default fallback)
+const QWEN_DEFAULT_API_KEY = "sk-48d1263fb12944c5a307f090e2f66b10";
 const QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 
 // Moonshot Kimi Configuration
-const MOONSHOT_API_KEY = "sk-c7f7632617754388b394179352601977";
+// Updated with user provided key
+const MOONSHOT_DEFAULT_API_KEY = "sk-Jl6AirNkcsXrpYnoik02cB2KfwWDJydLibTZadz6tV3lcnQq";
 const MOONSHOT_BASE_URL = "https://api.moonshot.cn/v1/chat/completions";
-// Using the specific preview model as requested
 const MOONSHOT_MODEL = "kimi-k2-0905-preview"; 
 
 const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
@@ -29,12 +29,13 @@ const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
 // --- Helpers ---
 
 // Qwen API Call Helper
-const callQwenAI = async (messages: any[], jsonMode: boolean = false): Promise<string> => {
+const callQwenAI = async (messages: any[], apiKey?: string, jsonMode: boolean = false): Promise<string> => {
+    const key = apiKey || QWEN_DEFAULT_API_KEY;
     try {
         const response = await fetch(QWEN_BASE_URL, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${QWEN_API_KEY}`,
+                'Authorization': `Bearer ${key}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -59,12 +60,18 @@ const callQwenAI = async (messages: any[], jsonMode: boolean = false): Promise<s
 };
 
 // Moonshot API Call Helper
-const callMoonshotAI = async (messages: any[], jsonMode: boolean = false): Promise<string> => {
+const callMoonshotAI = async (messages: any[], apiKey?: string, jsonMode: boolean = false): Promise<string> => {
+    const key = apiKey || MOONSHOT_DEFAULT_API_KEY;
+    
+    if (!key) {
+        throw new Error("Missing Moonshot Kimi API Key");
+    }
+
     try {
         const response = await fetch(MOONSHOT_BASE_URL, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${MOONSHOT_API_KEY}`,
+                'Authorization': `Bearer ${key}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -103,7 +110,7 @@ const safeJsonParse = (text: string, defaultVal: any) => {
 
 // --- Services ---
 
-export const generateContractSummary = async (text: string, provider: ModelProvider = ModelProvider.GEMINI): Promise<ContractSummary> => {
+export const generateContractSummary = async (text: string, provider: ModelProvider = ModelProvider.GEMINI, apiKey?: string): Promise<ContractSummary> => {
   const promptText = `
     Analyze the following legal contract text and extract key information. 
     Return a JSON object with keys: type, parties (array), amount, duration, mainSubject.
@@ -116,7 +123,7 @@ export const generateContractSummary = async (text: string, provider: ModelProvi
 
   if (provider === ModelProvider.QWEN) {
       try {
-          const content = await callQwenAI([systemMessage, userMessage], true);
+          const content = await callQwenAI([systemMessage, userMessage], apiKey, true);
           return safeJsonParse(content, getUnknownSummary("Could not analyze text (Qwen)."));
       } catch (e) {
           return getUnknownSummary("Error calling Qwen API.");
@@ -125,7 +132,7 @@ export const generateContractSummary = async (text: string, provider: ModelProvi
 
   if (provider === ModelProvider.KIMI) {
       try {
-          const content = await callMoonshotAI([systemMessage, userMessage], true);
+          const content = await callMoonshotAI([systemMessage, userMessage], apiKey, true);
           return safeJsonParse(content, getUnknownSummary("Could not analyze text (Kimi)."));
       } catch (e) {
           return getUnknownSummary("Error calling Moonshot API.");
@@ -176,7 +183,8 @@ export const analyzeContractRisks = async (
   stance: ContractStance, 
   strictness: ReviewStrictness,
   rulesContext: string,
-  provider: ModelProvider = ModelProvider.GEMINI
+  provider: ModelProvider = ModelProvider.GEMINI,
+  apiKey?: string
 ): Promise<RiskPoint[]> => {
   const systemPrompt = `
     You are a senior legal consultant. Review the contract.
@@ -206,9 +214,9 @@ export const analyzeContractRisks = async (
       try {
         let content = "";
         if (provider === ModelProvider.QWEN) {
-            content = await callQwenAI(messages, true);
+            content = await callQwenAI(messages, apiKey, true);
         } else {
-            content = await callMoonshotAI(messages, true);
+            content = await callMoonshotAI(messages, apiKey, true);
         }
         
         const rawRisks = safeJsonParse(content, []);
@@ -216,7 +224,8 @@ export const analyzeContractRisks = async (
         return rawRisks.map((r: any, index: number) => ({ ...r, id: `risk-${providerPrefix}-${index}-${Date.now()}`, isAddressed: false }));
       } catch (e) {
         console.error(`${provider} Analysis Failed`, e);
-        return [];
+        // Re-throw to show in UI
+        throw e;
       }
   }
 
@@ -255,7 +264,7 @@ export const analyzeContractRisks = async (
   }
 };
 
-export const draftNewContract = async (type: string, requirements: string, provider: ModelProvider = ModelProvider.GEMINI): Promise<string> => {
+export const draftNewContract = async (type: string, requirements: string, provider: ModelProvider = ModelProvider.GEMINI, apiKey?: string): Promise<string> => {
   const prompt = `
     Draft a professional legal contract.
     Type: ${type}
@@ -271,7 +280,7 @@ export const draftNewContract = async (type: string, requirements: string, provi
 
   if (provider === ModelProvider.QWEN) {
       try {
-          return await callQwenAI(messages);
+          return await callQwenAI(messages, apiKey);
       } catch (e) {
           return "Error drafting contract with Qwen.";
       }
@@ -279,9 +288,9 @@ export const draftNewContract = async (type: string, requirements: string, provi
 
   if (provider === ModelProvider.KIMI) {
       try {
-          return await callMoonshotAI(messages);
+          return await callMoonshotAI(messages, apiKey);
       } catch (e) {
-          return "Error drafting contract with Kimi (Moonshot).";
+          return `Error drafting contract with Kimi (Moonshot): ${e instanceof Error ? e.message : 'Unknown error'}`;
       }
   }
 

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ContractData, ContractStance, ReviewStrictness, RiskPoint, RiskLevel, ContractSummary, ReviewSession, PrivacySessionData, MaskingMap, ModelProvider } from '../types';
 import { analyzeContractRisks, generateContractSummary } from '../services/geminiService';
-import { Check, X, ArrowRight, Download, Loader2, Sparkles, Wand2, ChevronLeft, ChevronRight, AlertTriangle, Shield, PieChart, Eye, EyeOff, Lock, Play, RotateCcw, CheckCircle2, Cpu } from 'lucide-react';
+import { Check, X, ArrowRight, Download, Loader2, Sparkles, Wand2, ChevronLeft, ChevronRight, AlertTriangle, Shield, PieChart, Eye, EyeOff, Lock, Play, RotateCcw, CheckCircle2, Cpu, Key } from 'lucide-react';
 import * as Diff from 'diff';
 
 interface ReviewInterfaceProps {
@@ -28,8 +28,9 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
   // Settings
   const [stance, setStance] = useState<ContractStance>(ContractStance.NEUTRAL);
   const [strictness, setStrictness] = useState<ReviewStrictness>(ReviewStrictness.BALANCED);
-  const [modelProvider, setModelProvider] = useState<ModelProvider>(ModelProvider.GEMINI); // Default to Gemini
-  
+  const [modelProvider, setModelProvider] = useState<ModelProvider>(ModelProvider.GEMINI); 
+  const [apiKey, setApiKey] = useState('');
+
   const [selectedRiskId, setSelectedRiskId] = useState<string | null>(null);
   
   // UX: History for Undo & Animation States
@@ -71,8 +72,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
   }, [contract, initialSession, privacyData]);
 
   // Derived State: Valid Risks
-  // Filters out risks that are not found in current text (hallucinations or obsolete)
-  // unless they are explicitly marked as addressed (history).
   const visibleRisks = useMemo(() => {
     return risks.filter(r => {
         if (r.isAddressed) return true;
@@ -80,8 +79,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
     });
   }, [risks, currentText]);
 
-  // Computed: Active risks sorted by position in the text
-  // This ensures the "1 of 5" numbering and Next/Prev buttons follow visual order
   const sortedActiveRisks = useMemo(() => {
     return visibleRisks
       .filter(r => !r.isAddressed)
@@ -134,30 +131,28 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
     const rulesContext = "Standard commercial contract rules, focus on liability caps and payment terms."; 
     
     try {
-      const identifiedRisks = await analyzeContractRisks(currentText, stance, strictness, rulesContext, modelProvider);
+      const identifiedRisks = await analyzeContractRisks(currentText, stance, strictness, rulesContext, modelProvider, apiKey);
       
-      // Sort risks by their position in the text initially
       const sortedRisks = identifiedRisks.sort((a, b) => {
           return currentText.indexOf(a.originalText) - currentText.indexOf(b.originalText);
       });
 
       setRisks(sortedRisks);
       setLoadingStep('');
-      setHistory([]); // Clear history on new analysis
+      setHistory([]); 
       
-      // Auto Save
       onSaveSession({
           id: Date.now().toString(),
-          contract: { ...contract, content: currentText }, // Saving the working copy
+          contract: { ...contract, content: currentText },
           summary,
           risks: sortedRisks,
           timestamp: Date.now(),
           privacyData: privacyData || undefined
       });
 
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert("分析失败，请重试");
+      alert(`分析失败: ${e.message || '请重试'}`);
     } finally {
       setLoading(false);
     }
@@ -175,8 +170,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
 
   const handleUndo = () => {
     if (history.length === 0) return;
-    
-    // Clear any pending navigation from the accept action
     if (transitionTimeoutRef.current) {
         clearTimeout(transitionTimeoutRef.current);
         transitionTimeoutRef.current = null;
@@ -188,7 +181,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
     setCurrentText(prev.text);
     setRisks(prev.risks);
     
-    // Restore selection and force scroll
     if (prev.selectedId) {
         setSelectedRiskId(prev.selectedId);
         setTimeout(() => {
@@ -199,42 +191,33 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
         }, 100);
     }
     
-    // Remove last history entry
     setHistory(prevHistory => prevHistory.slice(0, -1));
   };
 
   const handleAcceptRisk = (risk: RiskPoint) => {
-    // 0. Save current state to history
     setHistory(prev => [...prev, { text: currentText, risks, selectedId: selectedRiskId }]);
-
-    // 1. Determine next risk ID based on CURRENT active list (before we mark as addressed)
     const currentIndex = sortedActiveRisks.findIndex(r => r.id === risk.id);
     let nextRiskId: string | null = null;
     
     if (currentIndex !== -1 && sortedActiveRisks.length > 1) {
-        // If we are at the end, wrap to 0. If not, go to next.
         if (currentIndex < sortedActiveRisks.length - 1) {
              nextRiskId = sortedActiveRisks[currentIndex + 1].id;
         } else {
              nextRiskId = sortedActiveRisks[0].id;
         }
     } else if (sortedActiveRisks.length === 1) {
-        // This was the last one
         nextRiskId = null;
     }
 
-    // 2. Set Animation State BEFORE changing text logic visually for the user
     setAnimatingRiskId(risk.id);
     setIsAnimatingSuccess(true);
 
-    // 3. Update text & Mark as addressed
     const newText = currentText.replace(risk.originalText, risk.suggestedText);
     const updatedRisks = risks.map(r => r.id === risk.id ? { ...r, isAddressed: true } : r);
     
     setCurrentText(newText);
     setRisks(updatedRisks);
     
-    // 4. Delay navigation to show the change
     if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
     
     transitionTimeoutRef.current = setTimeout(() => {
@@ -245,14 +228,11 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
         } else {
             setSelectedRiskId(null);
         }
-    }, 1500); // 1.5s buffer for user to see the change
+    }, 1500); 
   };
 
   const handleIgnoreRisk = (riskId: string) => {
-     // Save history
      setHistory(prev => [...prev, { text: currentText, risks, selectedId: selectedRiskId }]);
-
-     // 1. Determine next
      const currentIndex = sortedActiveRisks.findIndex(r => r.id === riskId);
      let nextRiskId: string | null = null;
      if (currentIndex !== -1 && sortedActiveRisks.length > 1) {
@@ -263,11 +243,9 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
          }
      }
 
-    // 2. Update State
     const updatedRisks = risks.map(r => r.id === riskId ? { ...r, isAddressed: true } : r);
     setRisks(updatedRisks);
     
-    // Immediate navigation for Ignore (less need for visual confirmation of text change)
     if (nextRiskId) {
         handleSelectRisk(nextRiskId);
     } else {
@@ -280,7 +258,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
 
       let currentIndex = sortedActiveRisks.findIndex(r => r.id === selectedRiskId);
       
-      // If current selection is lost, default to 0
       if (currentIndex === -1) {
           currentIndex = -1;
       }
@@ -301,7 +278,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
   };
 
   const downloadContract = () => {
-    // Always unmask before download
     const finalContent = unmaskText(currentText);
     const element = document.createElement("a");
     const file = new Blob([finalContent], {type: 'application/msword'});
@@ -312,17 +288,10 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
   };
 
   const renderDocumentContent = () => {
-    // We need to render:
-    // 1. Current text.
-    // 2. Active Risks (highlighted based on originalText).
-    // 3. The currently animating risk (highlighted based on suggestedText, because the text has already been updated!).
-    
-    // Build a combined list of segments to highlight
     const segmentsToHighlight = [
         ...sortedActiveRisks.map(r => ({ ...r, matchText: r.originalText, isAnimating: false })),
     ];
     
-    // If we are animating a success state, we need to find that specific risk and highlight its NEW text (suggestedText)
     if (animatingRiskId) {
         const animatingRisk = risks.find(r => r.id === animatingRiskId);
         if (animatingRisk) {
@@ -334,7 +303,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
         }
     }
 
-    // Sort segments by their position in the current text to ensure correct splitting order
     const sortedSegments = segmentsToHighlight
         .filter(s => currentText.indexOf(s.matchText) !== -1)
         .sort((a, b) => currentText.indexOf(a.matchText) - currentText.indexOf(b.matchText));
@@ -372,11 +340,9 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
     return (
       <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-gray-800 pb-[80vh] scroll-mt-32">
         {parts.map((part, idx) => {
-           // If user wants "Original View", we visually unmask the content segment
            const displayText = (!isMaskedView && privacyData) ? unmaskText(part.text) : part.text;
            
            if (part.riskId) {
-               // Special rendering for the animating (just accepted) risk
                if (part.isAnimating) {
                    return (
                        <span 
@@ -416,7 +382,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
 
   const selectedRisk = risks.find(r => r.id === selectedRiskId);
   const activeCount = sortedActiveRisks.length;
-  // Determine index in the SORTED list for display
   const currentIndexDisplay = selectedRisk && !selectedRisk.isAddressed 
       ? sortedActiveRisks.findIndex(r => r.id === selectedRisk.id) + 1 
       : '-';
@@ -518,7 +483,10 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                     <div className="relative">
                         <select 
                             value={modelProvider}
-                            onChange={(e) => setModelProvider(e.target.value as ModelProvider)}
+                            onChange={(e) => {
+                                setModelProvider(e.target.value as ModelProvider);
+                                setApiKey(''); // Clear API key on model switch
+                            }}
                             className="w-full p-3 pl-10 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
                         >
                             {Object.values(ModelProvider).map(m => (
@@ -531,6 +499,24 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                         {getModelDescription(modelProvider)}
                     </p>
                   </div>
+
+                  {modelProvider !== ModelProvider.GEMINI && (
+                      <div className="animate-in fade-in slide-in-from-top-2">
+                        <label className="block text-sm font-bold text-gray-700 mb-2">
+                            API Key
+                        </label>
+                        <div className="relative">
+                            <input 
+                                type="password"
+                                value={apiKey}
+                                onChange={(e) => setApiKey(e.target.value)}
+                                placeholder="选填，为空则使用内置 Key"
+                                className="w-full p-3 pl-10 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                            <Key className="w-4 h-4 text-gray-500 absolute left-3 top-3.5" />
+                        </div>
+                      </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">我方立场</label>

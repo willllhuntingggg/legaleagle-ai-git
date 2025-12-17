@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { draftNewContract } from '../services/geminiService';
-import { FileText, Loader2, Download, PenTool, RefreshCw, Cpu } from 'lucide-react';
+import { FileText, Loader2, Download, PenTool, RefreshCw, Cpu, Key } from 'lucide-react';
 import { ModelProvider } from '../types';
 
 const CONTRACT_TEMPLATES: Record<string, string> = {
@@ -41,6 +41,7 @@ export const ContractDrafting: React.FC = () => {
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
   const [modelProvider, setModelProvider] = useState<ModelProvider>(ModelProvider.GEMINI);
+  const [apiKey, setApiKey] = useState('');
 
   const handleTypeChange = (newType: string) => {
     setType(newType);
@@ -53,7 +54,7 @@ export const ContractDrafting: React.FC = () => {
 
   const handleDraft = async () => {
     setLoading(true);
-    const text = await draftNewContract(type, requirements, modelProvider);
+    const text = await draftNewContract(type, requirements, modelProvider, apiKey);
     setResult(text);
     setLoading(false);
   };
@@ -92,7 +93,10 @@ export const ContractDrafting: React.FC = () => {
                     <div className="relative">
                         <select 
                             value={modelProvider}
-                            onChange={(e) => setModelProvider(e.target.value as ModelProvider)}
+                            onChange={(e) => {
+                                setModelProvider(e.target.value as ModelProvider);
+                                setApiKey(''); // Reset Key
+                            }}
                             className="w-full p-2.5 pl-9 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
                         >
                             {Object.values(ModelProvider).map(m => (
@@ -102,6 +106,24 @@ export const ContractDrafting: React.FC = () => {
                         <Cpu className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
                     </div>
                 </div>
+
+                {modelProvider !== ModelProvider.GEMINI && (
+                  <div className="mb-4 animate-in fade-in slide-in-from-top-2">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                        API Key
+                    </label>
+                    <div className="relative">
+                        <input 
+                            type="password"
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            placeholder="选填，为空则使用内置 Key"
+                            className="w-full p-2.5 pl-9 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                        <Key className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
+                    </div>
+                  </div>
+                )}
 
                 <div className="mb-6">
                     <label className="block text-sm font-bold text-gray-700 mb-2">合同类型</label>

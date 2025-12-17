@@ -106,6 +106,7 @@ const callDoubaoAI = async (messages: any[], apiKey?: string, jsonMode: boolean 
     }
 
     try {
+        // Updated to match the provided working curl example more closely
         const response = await fetch(DOUBAO_BASE_URL, {
             method: 'POST',
             headers: {
@@ -115,15 +116,19 @@ const callDoubaoAI = async (messages: any[], apiKey?: string, jsonMode: boolean 
             body: JSON.stringify({
                 model: DOUBAO_MODEL,
                 messages: messages,
-                // Doubao API supports standard OpenAI format
-                // Note: strict json_object enforcement might vary, relying on prompt instruction is often safer
+                stream: false,
+                // Use default max tokens or specific config if needed. 
+                // Removed explicit max_tokens to avoid conflict, relying on model default.
+                // The provided example used max_completion_tokens: 65535, we can try omitting to be safe
+                // or use a reasonable standard.
                 temperature: 0.3
             })
         });
 
         if (!response.ok) {
             const err = await response.text();
-            throw new Error(`Doubao API Error: ${err}`);
+            console.error(`Doubao API Error details: ${err}`);
+            throw new Error(`Doubao API Error: ${response.status} - ${err}`);
         }
 
         const data = await response.json();
@@ -218,7 +223,8 @@ export const generateContractSummary = async (text: string, provider: ModelProvi
           const content = await callDoubaoAI([systemMessage, userMessage], apiKey, true);
           return safeJsonParse(content, getUnknownSummary("Could not analyze text (Doubao)."));
       } catch (e) {
-          return getUnknownSummary("Error calling Doubao API.");
+          console.error("Doubao Error in Summary:", e);
+          return getUnknownSummary(`Error calling Doubao API: ${e instanceof Error ? e.message : 'Unknown'}`);
       }
   }
 

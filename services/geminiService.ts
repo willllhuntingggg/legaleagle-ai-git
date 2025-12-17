@@ -6,12 +6,7 @@ import { ContractStance, ReviewStrictness, RiskLevel, ContractSummary, RiskPoint
 
 // Helper to get Gemini API key safely
 const getGeminiApiKey = () => {
-  try {
-    return process.env.API_KEY || '';
-  } catch (e) {
-    console.warn("process.env is not defined, using empty key.");
-    return '';
-  }
+    return 'AIzaSyD1sULlYYip0iURLhwsSnoz2j_qCdXxmSA';
 };
 
 // Alibaba Qwen Configuration (Default fallback)

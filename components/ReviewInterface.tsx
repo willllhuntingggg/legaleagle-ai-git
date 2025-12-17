@@ -47,7 +47,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
   useEffect(() => {
     // If we have a previous session, restore it
     if (initialSession) {
-        // If the session had privacy data, use the masked text from it
         const sessionText = initialSession.privacyData?.maskedContent || initialSession.contract.content;
         setCurrentText(sessionText);
         setRisks(initialSession.risks);
@@ -61,15 +60,24 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
         setRisks([]);
         setSummary(null);
         setSelectedRiskId(null);
-        
-        // Initial summary fetching (using Gemini as default for speed on load)
-        const fetchSummary = async () => {
-          const sum = await generateContractSummary(privacyData?.maskedContent || contract.content, ModelProvider.GEMINI);
-          setSummary(sum);
-        };
-        fetchSummary();
+        // Do NOT auto-fetch summary on load to avoid API cost/errors before user inputs key
     }
   }, [contract, initialSession, privacyData]);
+
+  // API Key Persistence Logic
+  useEffect(() => {
+      const savedKey = localStorage.getItem(`apikey_${modelProvider}`);
+      if (savedKey) {
+          setApiKey(savedKey);
+      } else {
+          setApiKey('');
+      }
+  }, [modelProvider]);
+
+  const handleApiKeyChange = (val: string) => {
+      setApiKey(val);
+      localStorage.setItem(`apikey_${modelProvider}`, val);
+  };
 
   // Derived State: Valid Risks
   const visibleRisks = useMemo(() => {
@@ -130,11 +138,23 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
   };
 
   const handleAnalyze = async () => {
+    if (!apiKey) {
+        alert("请输入 API Key 后再开始审查");
+        return;
+    }
+
     setLoading(true);
     setLoadingStep(`正在调用 ${modelProvider.split(' ')[0]} 分析合同条款...`);
     const rulesContext = "Standard commercial contract rules, focus on liability caps and payment terms."; 
     
     try {
+      // Parallel fetch summary if not exists
+      if (!summary) {
+          generateContractSummary(currentText, modelProvider, apiKey)
+            .then(s => setSummary(s))
+            .catch(e => console.error("Summary failed", e));
+      }
+
       const identifiedRisks = await analyzeContractRisks(currentText, stance, strictness, rulesContext, modelProvider, apiKey);
       
       const sortedRisks = identifiedRisks.sort((a, b) => {
@@ -156,7 +176,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
 
     } catch (e: any) {
       console.error(e);
-      alert(`分析失败: ${e.message || '请重试'}`);
+      alert(`分析失败: ${e.message || '请检查 API Key 或网络连接'}`);
     } finally {
       setLoading(false);
     }
@@ -173,13 +193,10 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
   };
 
   const handleNavigationBack = () => {
-    // If in active session (not history) and analysis results exist, return to config
     if (risks.length > 0 && !initialSession) {
-        // Direct return to config without confirmation for better UX (Quick re-review)
         setRisks([]);
         setHistory([]);
     } else {
-        // Standard back behavior (e.g. back to history list or previous page)
         onBack();
     }
   };
@@ -441,7 +458,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                   <span>{summary.amount}</span>
                 </>
               ) : (
-                <span>Loading summary...</span>
+                <span>等待分析...</span>
               )}
             </div>
           </div>
@@ -467,8 +484,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
           </div>
         </div>
 
-        {/* Right: Layout Column (Placeholder/Static Dashboard) */}
-        {/* This column stays in flow to preserve the document width */}
+        {/* Right: Layout Column */}
         <div className="w-[450px] bg-white border-l border-gray-200 flex flex-col shadow-2xl z-20 relative">
           
           {/* 1. Configuration State */}
@@ -501,7 +517,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                             value={modelProvider}
                             onChange={(e) => {
                                 setModelProvider(e.target.value as ModelProvider);
-                                setApiKey(''); // Clear API key on model switch
                             }}
                             className="w-full p-3 pl-10 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
                         >
@@ -518,18 +533,21 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
 
                   <div className="animate-in fade-in slide-in-from-top-2">
                     <label className="block text-sm font-bold text-gray-700 mb-2">
-                        API Key
+                        API Key <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                         <input 
                             type="password"
                             value={apiKey}
-                            onChange={(e) => setApiKey(e.target.value)}
-                            placeholder="选填，为空则使用内置 Key"
+                            onChange={(e) => handleApiKeyChange(e.target.value)}
+                            placeholder={`请输入 ${modelProvider.split(' ')[0]} API Key`}
                             className="w-full p-3 pl-10 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                         />
                         <Key className="w-4 h-4 text-gray-500 absolute left-3 top-3.5" />
                     </div>
+                    <p className="text-xs text-gray-400 mt-1 ml-1">
+                        Key 仅存储在本地浏览器，不会上传服务器。
+                    </p>
                   </div>
 
                   <div>
@@ -580,7 +598,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
             </div>
           )}
 
-          {/* 2. Dashboard Overview (Default when analyzed) */}
+          {/* 2. Dashboard Overview (Same as before) */}
           {risks.length > 0 && (
             <div className="flex flex-col h-full bg-slate-50/50">
                 <div className="p-6 border-b bg-white">
@@ -698,11 +716,10 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
         </div>
       </div>
 
-      {/* 3. Risk Detail Drawer (Fixed Overlay) */}
+      {/* 3. Risk Detail Drawer (Same as before) */}
       {selectedRisk && (
         <div className="fixed top-0 right-0 bottom-0 w-[450px] bg-white shadow-[0_0_50px_-12px_rgba(0,0,0,0.25)] border-l border-gray-200 z-[60] flex flex-col animate-in slide-in-from-right duration-300">
             {isAnimatingSuccess ? (
-                // SUCCESS ANIMATION STATE
                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-300">
                     <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6 animate-bounce">
                         <CheckCircle2 className="w-10 h-10 text-green-600" />
@@ -711,7 +728,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                     <p className="text-gray-500 mb-8">正在跳转至下一条风险...</p>
                 </div>
             ) : (
-                // NORMAL STATE
                 <>
                     {/* Detail Header */}
                     <div className="p-4 pt-6 border-b flex items-center justify-between bg-slate-50">

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { draftNewContract } from '../services/geminiService';
 import { FileText, Loader2, Download, PenTool, RefreshCw, Cpu, Key } from 'lucide-react';
 import { ModelProvider } from '../types';
@@ -43,6 +43,21 @@ export const ContractDrafting: React.FC = () => {
   const [modelProvider, setModelProvider] = useState<ModelProvider>(ModelProvider.GEMINI);
   const [apiKey, setApiKey] = useState('');
 
+  // API Key Persistence Logic
+  useEffect(() => {
+    const savedKey = localStorage.getItem(`apikey_${modelProvider}`);
+    if (savedKey) {
+        setApiKey(savedKey);
+    } else {
+        setApiKey('');
+    }
+  }, [modelProvider]);
+
+  const handleApiKeyChange = (val: string) => {
+    setApiKey(val);
+    localStorage.setItem(`apikey_${modelProvider}`, val);
+  };
+
   const handleTypeChange = (newType: string) => {
     setType(newType);
     if (CONTRACT_TEMPLATES[newType]) {
@@ -53,6 +68,10 @@ export const ContractDrafting: React.FC = () => {
   };
 
   const handleDraft = async () => {
+    if (!apiKey) {
+        alert("请输入 API Key 后再开始生成");
+        return;
+    }
     setLoading(true);
     const text = await draftNewContract(type, requirements, modelProvider, apiKey);
     setResult(text);
@@ -95,7 +114,6 @@ export const ContractDrafting: React.FC = () => {
                             value={modelProvider}
                             onChange={(e) => {
                                 setModelProvider(e.target.value as ModelProvider);
-                                setApiKey(''); // Reset Key
                             }}
                             className="w-full p-2.5 pl-9 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
                         >
@@ -109,18 +127,21 @@ export const ContractDrafting: React.FC = () => {
 
                 <div className="mb-4 animate-in fade-in slide-in-from-top-2">
                     <label className="block text-sm font-bold text-gray-700 mb-2">
-                        API Key
+                        API Key <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                         <input 
                             type="password"
                             value={apiKey}
-                            onChange={(e) => setApiKey(e.target.value)}
-                            placeholder="选填，为空则使用内置 Key"
+                            onChange={(e) => handleApiKeyChange(e.target.value)}
+                            placeholder={`请输入 ${modelProvider.split(' ')[0]} API Key`}
                             className="w-full p-2.5 pl-9 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                         />
                         <Key className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
                     </div>
+                     <p className="text-xs text-gray-400 mt-1 ml-1">
+                        Key 仅存储在本地浏览器，不会上传服务器。
+                    </p>
                 </div>
 
                 <div className="mb-6">

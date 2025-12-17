@@ -1,73 +1,153 @@
 
-import { Type } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { ContractStance, ReviewStrictness, RiskLevel, ContractSummary, RiskPoint, ModelProvider } from "../types";
 
 // --- Helpers ---
 
-// Unified Backend Call Helper
-const callBackendAPI = async (
+// Client-Side AI Call Helper
+const callAIProvider = async (
     provider: ModelProvider, 
     messages: any[], 
     config: any = {},
-    userApiKey?: string
+    userApiKey: string
 ): Promise<string> => {
-    try {
-        const response = await fetch('/api/chat', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                provider,
-                messages,
-                config,
-                apiKey: userApiKey // Optional: Pass user provided key if available
-            })
-        });
+    if (!userApiKey) {
+        throw new Error(`请在左侧设置中填写 ${provider.split(' ')[0]} 的 API Key`);
+    }
 
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({ error: response.statusText }));
-            throw new Error(errData.error || `Backend Error: ${response.status}`);
+    try {
+        // 1. Google Gemini
+        if (provider === ModelProvider.GEMINI) {
+            const ai = new GoogleGenAI({ apiKey: userApiKey });
+            
+            // Extract prompt from messages (Simplified for single turn or system+user)
+            const systemMsg = messages.find(m => m.role === 'system')?.content;
+            const userMsg = messages.find(m => m.role === 'user')?.content;
+
+            const modelId = 'gemini-2.5-flash';
+            
+            const generateConfig: any = {
+                responseMimeType: config.responseMimeType,
+                responseSchema: config.responseSchema,
+                temperature: config.temperature || 0.2
+            };
+            
+            if (systemMsg) {
+                generateConfig.systemInstruction = systemMsg;
+            }
+
+            const result = await ai.models.generateContent({
+                model: modelId,
+                contents: userMsg, 
+                config: generateConfig
+            });
+            
+            return result.text || "";
+        }
+        
+        // 2. Alibaba Qwen (Direct Fetch - requires CORS support from provider or browser extension)
+        else if (provider === ModelProvider.QWEN) {
+            const resp = await fetch("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${userApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: "qwen-plus",
+                    messages: messages,
+                    response_format: config.jsonMode ? { type: "json_object" } : undefined,
+                    temperature: 0.2
+                })
+            });
+            if (!resp.ok) {
+                 const err = await resp.text();
+                 throw new Error(`Qwen API Error: ${err}`);
+            }
+            const data = await resp.json();
+            return data.choices?.[0]?.message?.content || "";
+        }
+        
+        // 3. Moonshot Kimi
+        else if (provider === ModelProvider.KIMI) {
+            const resp = await fetch("https://api.moonshot.cn/v1/chat/completions", {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${userApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: "kimi-k2-turbo-preview",
+                    messages: messages,
+                    response_format: config.jsonMode ? { type: "json_object" } : undefined,
+                    temperature: 0.3
+                })
+            });
+            if (!resp.ok) {
+                 const err = await resp.text();
+                 throw new Error(`Moonshot API Error: ${err}`);
+            }
+            const data = await resp.json();
+            return data.choices?.[0]?.message?.content || "";
         }
 
-        const data = await response.json();
-        return data.text || "";
-    } catch (error: any) {
-        console.error(`Call to ${provider} failed:`, error);
+        // 4. ByteDance Doubao
+        else if (provider === ModelProvider.DOUBAO) {
+             const resp = await fetch("https://ark.cn-beijing.volces.com/api/v3/chat/completions", {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${userApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: "doubao-seed-1-6-lite-251015", // Note: This often requires a specific endpoint ID in reality
+                    messages: messages,
+                    stream: false
+                })
+            });
+             if (!resp.ok) throw new Error(`Doubao API Error: ${await resp.text()}`);
+            const data = await resp.json();
+            return data.choices?.[0]?.message?.content || "";
+        }
+
+        // 5. Xiaomi MiMo
+        else if (provider === ModelProvider.MIMO) {
+             // Mock implementation for MiMo as it likely doesn't have a public CORS-enabled API key endpoint standard yet
+             console.warn("MiMo direct API not fully standard, using mock behavior for demo.");
+             throw new Error("MiMo API connection failed (CORS/Network).");
+        }
+
+        throw new Error("Unknown Provider");
+
+    } catch (e: any) {
+        console.error(`${provider} Request Failed`, e);
         
-        // --- Fallback Mock Logic (Preserved from previous version) ---
-        // Handles cases where the Backend fails (e.g., 500, Network Error, or Upstream API down)
-        if (provider === ModelProvider.MIMO || error.message.includes('MiMo')) {
-             console.warn("Using Fallback Mock for Xiaomi MiMo due to backend failure.");
+        // Fallback Mock Logic for Demo purposes if API fails (e.g. CORS or Invalid Key)
+        if (e.message.includes("Failed to fetch") || e.message.includes("CORS") || e.message.includes("MiMo")) {
+             console.warn("Network/CORS error detected, falling back to Mock response for demo continuity.");
+             const lastMsg = messages[messages.length-1].content;
              
-             const lastMessage = messages[messages.length - 1]?.content || "";
-             
-             if (lastMessage.includes("Analyze the following legal contract")) {
+             if (lastMsg.includes("extract key information")) {
                  return JSON.stringify({
-                     type: "Service Agreement (Mocked)",
-                     parties: ["Client (Unknown)", "Provider (Unknown)"],
-                     amount: "Refer to Contract",
-                     duration: "Unknown",
-                     mainSubject: "Network connection to Xiaomi failed; this is a placeholder summary."
+                     type: "Mocked Agreement",
+                     parties: ["Demo Client", "Demo Provider"],
+                     amount: "100,000 CNY",
+                     duration: "1 Year",
+                     mainSubject: "This is a local fallback summary because the API call failed (likely due to CORS or invalid Key)."
                  });
              }
-             if (lastMessage.includes("Identify risks")) {
-                 return JSON.stringify([
-                     {
-                         originalText: "Provider's total liability under this Agreement shall be limited to $5,000",
-                         riskDescription: "Liability Cap Low (Mock)",
-                         reason: "Unable to reach Xiaomi API. This is a simulated risk for demonstration purposes.",
-                         level: "HIGH",
-                         suggestedText: "Liability cap should be increased to match contract value."
-                     }
-                 ]);
-             }
-             if (lastMessage.includes("Draft a professional")) {
-                 return "# Contract Draft (Offline Mode)\n\n**Note:** The Xiaomi MiMo API could not be reached. This is a placeholder draft.";
+             if (lastMsg.includes("Identify risks")) {
+                 return JSON.stringify([{
+                     originalText: "Provider's total liability... limited to $5,000",
+                     riskDescription: "Liability Cap Too Low (Local Mock)",
+                     reason: "API call failed. Please check console for CORS errors. This is a simulated risk.",
+                     level: "HIGH",
+                     suggestedText: "Provider's total liability shall match the Contract Price."
+                 }]);
              }
         }
         
-        throw error;
+        throw e;
     }
 };
 
@@ -82,7 +162,6 @@ const safeJsonParse = (text: string, defaultVal: any) => {
         if (match) {
             try { return JSON.parse(match[1]); } catch (e2) {}
         }
-        // Try finding array/object structure
         try {
             const firstBracket = text.indexOf('[');
             const lastBracket = text.lastIndexOf(']');
@@ -114,19 +193,20 @@ export const generateContractSummary = async (text: string, provider: ModelProvi
     Text: "${text.substring(0, 10000)}..."
   `;
 
-  const systemMessage = { role: "system", content: "You are a legal assistant. Respond in pure JSON." };
-  const userMessage = { role: "user", content: promptText };
-  const messages = [systemMessage, userMessage];
+  const messages = [
+      { role: "system", content: "You are a legal assistant. Respond in pure JSON." },
+      { role: "user", content: promptText }
+  ];
 
-  // Config for Gemini (Schema)
+  // Schema for Gemini
   const geminiSchema: any = {
     type: Type.OBJECT,
     properties: {
-      type: { type: Type.STRING, description: "Type of the contract" },
-      parties: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Names of the parties" },
-      amount: { type: Type.STRING, description: "Total value" },
-      duration: { type: Type.STRING, description: "Duration" },
-      mainSubject: { type: Type.STRING, description: "Summary" },
+      type: { type: Type.STRING },
+      parties: { type: Type.ARRAY, items: { type: Type.STRING } },
+      amount: { type: Type.STRING },
+      duration: { type: Type.STRING },
+      mainSubject: { type: Type.STRING },
     },
     required: ["type", "parties", "amount", "duration", "mainSubject"],
   };
@@ -138,10 +218,10 @@ export const generateContractSummary = async (text: string, provider: ModelProvi
           jsonMode: true
       };
 
-      const content = await callBackendAPI(provider, messages, config, apiKey);
+      const content = await callAIProvider(provider, messages, config, apiKey || "");
       return safeJsonParse(content, getUnknownSummary("Could not analyze text."));
   } catch (e: any) {
-      return getUnknownSummary(`Error calling ${provider}: ${e.message}`);
+      return getUnknownSummary(`${e.message}`);
   }
 };
 
@@ -185,13 +265,12 @@ export const analyzeContractRisks = async (
       { role: "user", content: userPrompt }
   ];
 
-  // Schema for Gemini
   const geminiSchema: any = {
     type: Type.ARRAY,
     items: {
       type: Type.OBJECT,
       properties: {
-        originalText: { type: Type.STRING, description: "Exact substring" },
+        originalText: { type: Type.STRING },
         riskDescription: { type: Type.STRING },
         reason: { type: Type.STRING },
         level: { type: Type.STRING, enum: [RiskLevel.HIGH, RiskLevel.MEDIUM, RiskLevel.LOW] },
@@ -209,20 +288,13 @@ export const analyzeContractRisks = async (
         temperature: 0.2
     };
 
-    const content = await callBackendAPI(provider, messages, config, apiKey);
+    const content = await callAIProvider(provider, messages, config, apiKey || "");
     
     let rawRisks = safeJsonParse(content, []);
     
     if (!Array.isArray(rawRisks)) {
         if (rawRisks && typeof rawRisks === 'object') {
-            if (rawRisks.originalText) {
-                rawRisks = [rawRisks];
-            } else {
-                const values = Object.values(rawRisks);
-                const foundArray = values.find(v => Array.isArray(v));
-                if (foundArray) rawRisks = foundArray;
-                else rawRisks = []; 
-            }
+             rawRisks = rawRisks.originalText ? [rawRisks] : [];
         } else {
             rawRisks = [];
         }
@@ -232,7 +304,7 @@ export const analyzeContractRisks = async (
     return rawRisks.map((r: any, index: number) => ({ ...r, id: `risk-${providerPrefix}-${index}-${Date.now()}`, isAddressed: false }));
   } catch (e) {
     console.error(`${provider} Analysis Failed`, e);
-    return [];
+    throw e;
   }
 };
 
@@ -251,7 +323,7 @@ export const draftNewContract = async (type: string, requirements: string, provi
   ];
 
   try {
-      return await callBackendAPI(provider, messages, {}, apiKey);
+      return await callAIProvider(provider, messages, {}, apiKey || "");
   } catch (e: any) {
       console.error("Drafting failed:", e);
       return `Error drafting contract: ${e.message}`;

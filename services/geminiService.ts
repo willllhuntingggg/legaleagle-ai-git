@@ -1,27 +1,104 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { ContractStance, ReviewStrictness, RiskLevel, ContractSummary, RiskPoint, MaskingMap } from "../types";
+import { ContractStance, ReviewStrictness, RiskLevel, ContractSummary, RiskPoint, ModelProvider } from "../types";
 
-// Helper to get API key safely
-const getApiKey = () => {
+// --- Configuration ---
+
+// Helper to get Gemini API key safely
+const getGeminiApiKey = () => {
   try {
     return process.env.API_KEY || '';
   } catch (e) {
-    console.warn("process.env is not defined, using empty key. Ensure API_KEY is injected.");
+    console.warn("process.env is not defined, using empty key.");
     return '';
   }
 };
 
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
+// Alibaba Qwen Configuration
+const QWEN_API_KEY = "sk-48d1263fb12944c5a307f090e2f66b10";
+const QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 
-export const generateContractSummary = async (text: string): Promise<ContractSummary> => {
-  const prompt = `
+const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
+
+// --- Helpers ---
+
+// Qwen API Call Helper
+const callQwenAI = async (messages: any[], jsonMode: boolean = false): Promise<string> => {
+    try {
+        const response = await fetch(QWEN_BASE_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${QWEN_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: "qwen-plus",
+                messages: messages,
+                response_format: jsonMode ? { type: "json_object" } : undefined,
+                temperature: 0.2
+            })
+        });
+
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`Qwen API Error: ${err}`);
+        }
+
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content || "";
+    } catch (error) {
+        console.error("Call to Qwen failed:", error);
+        throw error;
+    }
+};
+
+// Parse JSON from potentially Markdown-wrapped string
+const safeJsonParse = (text: string, defaultVal: any) => {
+    try {
+        // Strip markdown code blocks if present (e.g. ```json ... ```)
+        const cleaned = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+        return JSON.parse(cleaned);
+    } catch (e) {
+        console.error("JSON Parsing failed", e);
+        return defaultVal;
+    }
+};
+
+// --- Services ---
+
+export const generateContractSummary = async (text: string, provider: ModelProvider = ModelProvider.GEMINI): Promise<ContractSummary> => {
+  const promptText = `
     Analyze the following legal contract text and extract key information. 
-    Return a JSON object.
+    Return a JSON object with keys: type, parties (array), amount, duration, mainSubject.
     
     Text: "${text.substring(0, 10000)}..."
   `;
 
+  if (provider === ModelProvider.QWEN) {
+      try {
+          const content = await callQwenAI([
+              { role: "system", content: "You are a legal assistant. Respond in pure JSON." },
+              { role: "user", content: promptText }
+          ], true);
+          return safeJsonParse(content, {
+              type: "Unknown",
+              parties: [],
+              amount: "Unknown",
+              duration: "Unknown",
+              mainSubject: "Could not analyze text (Qwen)."
+          });
+      } catch (e) {
+          return {
+              type: "Unknown",
+              parties: [],
+              amount: "Unknown",
+              duration: "Unknown",
+              mainSubject: "Error calling Qwen API."
+          };
+      }
+  }
+
+  // Default: Gemini
   const schema: any = {
     type: Type.OBJECT,
     properties: {
@@ -37,7 +114,7 @@ export const generateContractSummary = async (text: string): Promise<ContractSum
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: prompt,
+      contents: promptText,
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
@@ -62,24 +139,44 @@ export const analyzeContractRisks = async (
   text: string, 
   stance: ContractStance, 
   strictness: ReviewStrictness,
-  rulesContext: string
+  rulesContext: string,
+  provider: ModelProvider = ModelProvider.GEMINI
 ): Promise<RiskPoint[]> => {
-  const prompt = `
-    You are a senior legal consultant. Review the contract provided below.
-    
+  const systemPrompt = `
+    You are a senior legal consultant. Review the contract.
     My Stance: ${stance}
     Review Strategy: ${strictness}
-    Knowledge Base Rules to Apply: ${rulesContext}
-
-    Identify risks based on my stance. For each risk, quote the *exact* original text snippet that is problematic. 
-    Then provide a safer, rewritten version of that snippet that maintains the document structure but fixes the risk.
+    Knowledge Base: ${rulesContext}
+  `;
+  
+  const userPrompt = `
+    Identify risks based on my stance. For each risk:
+    1. Quote the *exact* original text snippet.
+    2. Provide a safer, rewritten version.
     
-    Return a raw JSON array.
+    Return a raw JSON array of objects with keys: originalText, riskDescription, reason, level (HIGH/MEDIUM/LOW), suggestedText.
     
     Contract Text:
     "${text}"
   `;
 
+  // --- QWEN Implementation ---
+  if (provider === ModelProvider.QWEN) {
+      try {
+        const content = await callQwenAI([
+            { role: "system", content: systemPrompt + " Respond ONLY with a JSON array." },
+            { role: "user", content: userPrompt }
+        ], true);
+        
+        const rawRisks = safeJsonParse(content, []);
+        return rawRisks.map((r: any, index: number) => ({ ...r, id: `risk-qwen-${index}-${Date.now()}`, isAddressed: false }));
+      } catch (e) {
+        console.error("Qwen Analysis Failed", e);
+        return [];
+      }
+  }
+
+  // --- Gemini Implementation ---
   const schema: any = {
     type: Type.ARRAY,
     items: {
@@ -97,24 +194,24 @@ export const analyzeContractRisks = async (
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash', // Using flash for larger context window
-      contents: prompt,
+      model: 'gemini-2.5-flash', 
+      contents: systemPrompt + "\n" + userPrompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
-        temperature: 0.2 // Low temperature for precision in quoting text
+        temperature: 0.2
       }
     });
 
     const rawRisks = JSON.parse(response.text || "[]");
-    return rawRisks.map((r: any, index: number) => ({ ...r, id: `risk-${index}-${Date.now()}`, isAddressed: false }));
+    return rawRisks.map((r: any, index: number) => ({ ...r, id: `risk-gemini-${index}-${Date.now()}`, isAddressed: false }));
   } catch (error) {
     console.error("Risk analysis failed:", error);
     return [];
   }
 };
 
-export const draftNewContract = async (type: string, requirements: string): Promise<string> => {
+export const draftNewContract = async (type: string, requirements: string, provider: ModelProvider = ModelProvider.GEMINI): Promise<string> => {
   const prompt = `
     Draft a professional legal contract.
     Type: ${type}
@@ -122,6 +219,17 @@ export const draftNewContract = async (type: string, requirements: string): Prom
     
     Return only the contract text in Markdown format.
   `;
+
+  if (provider === ModelProvider.QWEN) {
+      try {
+          return await callQwenAI([
+              { role: "system", content: "You are an expert legal drafter." },
+              { role: "user", content: prompt }
+          ]);
+      } catch (e) {
+          return "Error drafting contract with Qwen.";
+      }
+  }
 
   try {
     const response = await ai.models.generateContent({

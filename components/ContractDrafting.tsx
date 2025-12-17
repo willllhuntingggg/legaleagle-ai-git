@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
 import { draftNewContract } from '../services/geminiService';
-import { FileText, Loader2, Download, PenTool, RefreshCw } from 'lucide-react';
+import { FileText, Loader2, Download, PenTool, RefreshCw, Cpu } from 'lucide-react';
+import { ModelProvider } from '../types';
 
 const CONTRACT_TEMPLATES: Record<string, string> = {
   '服务合同 (Service Agreement)': `1. 委托内容：甲方委托乙方进行【具体服务内容，如：软件开发/咨询服务】。
@@ -39,6 +40,7 @@ export const ContractDrafting: React.FC = () => {
   const [requirements, setRequirements] = useState(CONTRACT_TEMPLATES['服务合同 (Service Agreement)']);
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
+  const [modelProvider, setModelProvider] = useState<ModelProvider>(ModelProvider.GEMINI);
 
   const handleTypeChange = (newType: string) => {
     setType(newType);
@@ -51,7 +53,7 @@ export const ContractDrafting: React.FC = () => {
 
   const handleDraft = async () => {
     setLoading(true);
-    const text = await draftNewContract(type, requirements);
+    const text = await draftNewContract(type, requirements, modelProvider);
     setResult(text);
     setLoading(false);
   };
@@ -84,6 +86,23 @@ export const ContractDrafting: React.FC = () => {
             {/* Left Panel: Inputs */}
             <div className="w-1/3 flex flex-col h-full overflow-y-auto pr-2 scrollbar-thin">
               <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col h-full">
+                
+                <div className="mb-4">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">生成模型</label>
+                    <div className="relative">
+                        <select 
+                            value={modelProvider}
+                            onChange={(e) => setModelProvider(e.target.value as ModelProvider)}
+                            className="w-full p-2.5 pl-9 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                        >
+                            {Object.values(ModelProvider).map(m => (
+                                <option key={m} value={m}>{m}</option>
+                            ))}
+                        </select>
+                        <Cpu className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
+                    </div>
+                </div>
+
                 <div className="mb-6">
                     <label className="block text-sm font-bold text-gray-700 mb-2">合同类型</label>
                     <select 
@@ -121,7 +140,12 @@ export const ContractDrafting: React.FC = () => {
                   disabled={loading || !requirements}
                   className="w-full mt-6 bg-slate-900 text-white py-3 rounded-lg hover:bg-slate-800 disabled:opacity-50 flex justify-center items-center gap-2 font-bold transition-all hover:scale-[1.02] shadow-lg shadow-slate-200"
                 >
-                  {loading ? <Loader2 className="animate-spin w-5 h-5" /> : '开始生成合同'}
+                  {loading ? (
+                    <>
+                        <Loader2 className="animate-spin w-5 h-5" />
+                        正在生成...
+                    </>
+                  ) : '开始生成合同'}
                 </button>
               </div>
             </div>

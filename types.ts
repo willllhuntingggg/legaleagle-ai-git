@@ -17,6 +17,11 @@ export enum ReviewStrictness {
   LOOSE = '宽松 (促成交易优先)'
 }
 
+export enum ModelProvider {
+  GEMINI = 'Google Gemini 2.5',
+  QWEN = 'Alibaba Qwen Plus (通义千问)'
+}
+
 export interface ContractSummary {
   type: string;
   parties: string[];

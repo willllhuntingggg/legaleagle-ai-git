@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ContractData, ContractStance, ReviewStrictness, RiskPoint, RiskLevel, ContractSummary, ReviewSession, PrivacySessionData, MaskingMap } from '../types';
+import { ContractData, ContractStance, ReviewStrictness, RiskPoint, RiskLevel, ContractSummary, ReviewSession, PrivacySessionData, MaskingMap, ModelProvider } from '../types';
 import { analyzeContractRisks, generateContractSummary } from '../services/geminiService';
-import { Check, X, ArrowRight, Download, Loader2, Sparkles, Wand2, ChevronLeft, ChevronRight, AlertTriangle, Shield, PieChart, Eye, EyeOff, Lock, Play, RotateCcw, CheckCircle2 } from 'lucide-react';
+import { Check, X, ArrowRight, Download, Loader2, Sparkles, Wand2, ChevronLeft, ChevronRight, AlertTriangle, Shield, PieChart, Eye, EyeOff, Lock, Play, RotateCcw, CheckCircle2, Cpu } from 'lucide-react';
 import * as Diff from 'diff';
 
 interface ReviewInterfaceProps {
@@ -27,6 +28,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
   // Settings
   const [stance, setStance] = useState<ContractStance>(ContractStance.NEUTRAL);
   const [strictness, setStrictness] = useState<ReviewStrictness>(ReviewStrictness.BALANCED);
+  const [modelProvider, setModelProvider] = useState<ModelProvider>(ModelProvider.GEMINI); // Default to Gemini
   
   const [selectedRiskId, setSelectedRiskId] = useState<string | null>(null);
   
@@ -59,9 +61,11 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
         setSummary(null);
         setSelectedRiskId(null);
         
+        // Initial summary fetching (using Gemini as default for speed on load, or can be lazy)
+        // We will skip auto-fetch here and let user click start to use their selected model,
+        // OR just fetch with default to populate header. Let's fetch with default.
         const fetchSummary = async () => {
-          // Summary is generated on the potentially masked text to simulate privacy
-          const sum = await generateContractSummary(privacyData?.maskedContent || contract.content);
+          const sum = await generateContractSummary(privacyData?.maskedContent || contract.content, ModelProvider.GEMINI);
           setSummary(sum);
         };
         fetchSummary();
@@ -115,12 +119,13 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
 
   const handleAnalyze = async () => {
     setLoading(true);
-    setLoadingStep('正在分析合同条款...');
+    setLoadingStep(`正在调用 ${modelProvider.split(' ')[0]} 分析合同条款...`);
     const rulesContext = "Standard commercial contract rules, focus on liability caps and payment terms."; 
     
     try {
-      // Analyze the CURRENT text (which is masked if privacy mode is on)
-      const identifiedRisks = await analyzeContractRisks(currentText, stance, strictness, rulesContext);
+      // Re-fetch summary with selected model if needed, but usually summary is fine.
+      // We focus on Risk Analysis with the selected model.
+      const identifiedRisks = await analyzeContractRisks(currentText, stance, strictness, rulesContext, modelProvider);
       
       // Sort risks by their position in the text initially
       const sortedRisks = identifiedRisks.sort((a, b) => {
@@ -502,6 +507,25 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                 </div>
 
                 <div className="space-y-5 bg-slate-50 p-6 rounded-xl border border-slate-100">
+                   <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">模型引擎</label>
+                    <div className="relative">
+                        <select 
+                            value={modelProvider}
+                            onChange={(e) => setModelProvider(e.target.value as ModelProvider)}
+                            className="w-full p-3 pl-10 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                        >
+                            {Object.values(ModelProvider).map(m => (
+                                <option key={m} value={m}>{m}</option>
+                            ))}
+                        </select>
+                        <Cpu className="w-4 h-4 text-gray-500 absolute left-3 top-3.5" />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1 ml-1">
+                        {modelProvider === ModelProvider.GEMINI ? 'Google 最新的多模态大模型，逻辑推理能力强。' : '阿里云通义千问，中文语境理解更优。'}
+                    </p>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">我方立场</label>
                     <select 

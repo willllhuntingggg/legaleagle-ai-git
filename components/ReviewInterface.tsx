@@ -168,6 +168,19 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
     }, 50);
   };
 
+  const handleNavigationBack = () => {
+    // If in active session (not history) and analysis results exist, confirm return to config
+    if (risks.length > 0 && !initialSession) {
+        if (window.confirm('返回配置页面将清除当前分析结果，是否继续？')) {
+            setRisks([]);
+            setHistory([]);
+        }
+    } else {
+        // Standard back behavior (e.g. back to history list or previous page)
+        onBack();
+    }
+  };
+
   const handleUndo = () => {
     if (history.length === 0) return;
     if (transitionTimeoutRef.current) {
@@ -404,7 +417,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
       {/* Header */}
       <div className="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm z-10 shrink-0">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="text-gray-500 hover:text-gray-700">
+          <button onClick={handleNavigationBack} className="text-gray-500 hover:text-gray-700">
             <ArrowRight className="rotate-180 w-5 h-5" />
           </button>
           <div>

@@ -22,7 +22,7 @@ const QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/co
 // Updated with user provided key
 const MOONSHOT_DEFAULT_API_KEY = "sk-Jl6AirNkcsXrpYnoik02cB2KfwWDJydLibTZadz6tV3lcnQq";
 const MOONSHOT_BASE_URL = "https://api.moonshot.cn/v1/chat/completions";
-const MOONSHOT_MODEL = "kimi-k2-0905-preview"; 
+const MOONSHOT_MODEL = "kimi-k2-turbo-preview"; 
 
 const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
 

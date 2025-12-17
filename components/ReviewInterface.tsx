@@ -122,6 +122,8 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
               return 'Moonshot Kimi，擅长长文本分析与上下文理解。';
           case ModelProvider.DOUBAO:
               return '字节跳动豆包，响应速度快，性价比高。';
+          case ModelProvider.MIMO:
+              return '小米 MiMo，适合轻量级任务。';
           default:
               return '';
       }
@@ -523,7 +525,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                             type="password"
                             value={apiKey}
                             onChange={(e) => setApiKey(e.target.value)}
-                            placeholder={modelProvider === ModelProvider.GEMINI ? "选填，为空则使用内置 Key" : "必填"}
+                            placeholder="选填，为空则使用内置 Key"
                             className="w-full p-3 pl-10 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                         />
                         <Key className="w-4 h-4 text-gray-500 absolute left-3 top-3.5" />

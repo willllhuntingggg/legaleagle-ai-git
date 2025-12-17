@@ -116,7 +116,7 @@ export const ContractDrafting: React.FC = () => {
                             type="password"
                             value={apiKey}
                             onChange={(e) => setApiKey(e.target.value)}
-                            placeholder={modelProvider === ModelProvider.GEMINI ? "选填，为空则使用内置 Key" : "必填"}
+                            placeholder="选填，为空则使用内置 Key"
                             className="w-full p-2.5 pl-9 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                         />
                         <Key className="w-4 h-4 text-gray-500 absolute left-3 top-3" />

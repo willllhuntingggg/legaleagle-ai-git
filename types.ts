@@ -1,4 +1,5 @@
 
+
 export enum RiskLevel {
   HIGH = 'HIGH',
   MEDIUM = 'MEDIUM',
@@ -21,7 +22,8 @@ export enum ModelProvider {
   GEMINI = 'Google Gemini 2.5',
   QWEN = 'Alibaba Qwen Plus (通义千问)',
   KIMI = 'Moonshot Kimi (月之暗面)',
-  DOUBAO = 'ByteDance Doubao (字节豆包)'
+  DOUBAO = 'ByteDance Doubao (字节豆包)',
+  MIMO = 'Xiaomi MiMo (小米)'
 }
 
 export interface ContractSummary {

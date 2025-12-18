@@ -1,3 +1,4 @@
+
 export default async function handler(req, res) {
   // CORS Handling
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -23,12 +24,10 @@ export default async function handler(req, res) {
     let responseText = "";
     
     // 1. Google Gemini
-    if (provider === 'Google Gemini 2.5') {
+    if (provider === 'Google Gemini 3') {
         const apiKey = userApiKey || process.env.GEMINI_API_KEY;
         if (!apiKey) throw new Error("Server missing GEMINI_API_KEY");
 
-        // Convert messages to Gemini format
-        // Note: Simple conversion. For production, handle multi-turn history more carefully.
         const systemMessage = messages.find(m => m.role === 'system');
         const userMessages = messages.filter(m => m.role !== 'system');
         
@@ -37,7 +36,6 @@ export default async function handler(req, res) {
             parts: [{ text: m.content }]
         }));
 
-        // If simple prompt string was passed (legacy support)
         if (typeof messages === 'string') {
             contents = [{ role: 'user', parts: [{ text: messages }] }];
         }
@@ -55,7 +53,7 @@ export default async function handler(req, res) {
             payload.systemInstruction = { parts: [{ text: systemMessage.content }] };
         }
 
-        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -135,30 +133,6 @@ export default async function handler(req, res) {
         });
 
         if (!resp.ok) throw new Error(`Doubao API Error: ${await resp.text()}`);
-        const data = await resp.json();
-        responseText = data.choices?.[0]?.message?.content || "";
-    }
-    // 5. Xiaomi MiMo
-    else if (provider === 'Xiaomi MiMo (小米)') {
-        const apiKey = userApiKey || process.env.MIMO_API_KEY;
-        if (!apiKey) throw new Error("Server missing MIMO_API_KEY");
-
-        const resp = await fetch("https://api.xiaomimimo.com/v1/chat/completions", {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: "mimo-1.0",
-                messages: messages,
-                stream: false,
-                temperature: 0.3,
-                response_format: config?.jsonMode ? { type: "json_object" } : undefined
-            })
-        });
-
-        if (!resp.ok) throw new Error(`MiMo API Error: ${await resp.text()}`);
         const data = await resp.json();
         responseText = data.choices?.[0]?.message?.content || "";
     }

@@ -40,7 +40,7 @@ export const ContractDrafting: React.FC = () => {
   const [requirements, setRequirements] = useState(CONTRACT_TEMPLATES['服务合同 (Service Agreement)']);
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
-  const [modelProvider, setModelProvider] = useState<ModelProvider>(ModelProvider.GEMINI);
+  const [modelProvider, setModelProvider] = useState<ModelProvider>(ModelProvider.QWEN);
   const [apiKey, setApiKey] = useState('');
 
   // API Key Persistence Logic
@@ -99,7 +99,7 @@ export const ContractDrafting: React.FC = () => {
         <p className="text-gray-500 mt-1">输入您的需求，AI 将为您生成专业的合同草案。</p>
       </div>
 
-      {/* Content Area - Flexes to fill remaining height */}
+      {/* Content Area */}
       <div className="flex-1 overflow-hidden p-8 max-w-7xl mx-auto w-full">
           <div className="flex gap-8 h-full">
             
@@ -117,9 +117,10 @@ export const ContractDrafting: React.FC = () => {
                             }}
                             className="w-full p-2.5 pl-9 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
                         >
-                            {Object.values(ModelProvider).map(m => (
-                                <option key={m} value={m}>{m}</option>
-                            ))}
+                            <option value={ModelProvider.QWEN}>{ModelProvider.QWEN}</option>
+                            <option value={ModelProvider.KIMI}>{ModelProvider.KIMI}</option>
+                            <option value={ModelProvider.DOUBAO}>{ModelProvider.DOUBAO}</option>
+                            <option value={ModelProvider.GEMINI}>{ModelProvider.GEMINI}</option>
                         </select>
                         <Cpu className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
                     </div>
@@ -195,7 +196,6 @@ export const ContractDrafting: React.FC = () => {
             <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col overflow-hidden h-full relative">
               {result ? (
                  <>
-                    {/* Fixed Toolbar inside the panel */}
                     <div className="px-6 py-3 border-b border-gray-100 bg-gray-50/80 backdrop-blur shrink-0 flex justify-between items-center">
                         <div className="flex items-center gap-2">
                              <FileText className="w-4 h-4 text-blue-600" />
@@ -209,7 +209,6 @@ export const ContractDrafting: React.FC = () => {
                         </button>
                     </div>
                     
-                    {/* Scrollable Document Content */}
                     <div className="flex-1 overflow-y-auto p-8 bg-white">
                         <div className="prose prose-sm max-w-none font-mono whitespace-pre-wrap text-gray-800 leading-7">
                             {result}

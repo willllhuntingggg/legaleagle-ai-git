@@ -67,18 +67,15 @@ const App: React.FC = () => {
     if (e.target.files?.[0]) {
         const file = e.target.files[0];
         
-        // Only show guide for Word documents
         const isWord = file.name.endsWith('.docx') || file.name.endsWith('.doc');
         
         if (isWord) {
             setPendingFile(file);
             setShowUploadGuide(true);
         } else {
-            // Directly process other formats
             processFile(file);
         }
         
-        // Clear input value so same file can be selected again if needed
         e.target.value = ''; 
     }
   };
@@ -111,9 +108,9 @@ const App: React.FC = () => {
           content: content,
           lastModified: file.lastModified
         });
-        setHistorySession(null); // Clear history session mode
-        setPrivacyData(null); // Clear previous privacy data
-        setCurrentPage(Page.PRIVACY_GUARD); // Go to Privacy Guard first
+        setHistorySession(null); 
+        setPrivacyData(null); 
+        setCurrentPage(Page.PRIVACY_GUARD); 
         setIsProcessing(false);
       };
 
@@ -122,7 +119,6 @@ const App: React.FC = () => {
           try {
             const arrayBuffer = event.target?.result as ArrayBuffer;
             
-            // Check for mammoth library
             let mammoth = (window as any).mammoth;
             if (!mammoth) {
                 await new Promise(resolve => setTimeout(resolve, 500));
@@ -150,14 +146,11 @@ const App: React.FC = () => {
         };
         reader.readAsText(file);
       } else {
-         // Default to text processing for unknown types, or PDF placeholder
          setTimeout(() => {
-             // For PDF or others not explicitly handled in frontend demo
              if (file.type.includes('pdf')) {
                 alert("PDF 解析暂不支持纯前端模式，已加载演示文本用于体验。");
                 processContent(DEMO_CONTRACT_TEXT);
              } else {
-                 // Try reading as text fallback
                  const textReader = new FileReader();
                  textReader.onload = (e) => processContent(e.target?.result as string);
                  textReader.readAsText(file);
@@ -180,7 +173,6 @@ const App: React.FC = () => {
   const loadHistory = (session: ReviewSession) => {
       setActiveContract(session.contract);
       setHistorySession(session);
-      // If history session has privacy data, we use it
       setPrivacyData(session.privacyData || null);
       setCurrentPage(Page.REVIEW);
   };
@@ -197,15 +189,12 @@ const App: React.FC = () => {
       }
   };
   
-  // Navigation handler for Back button in Review
   const handleReviewBack = () => {
       if (historySession) {
-          // If viewing history, go back to history list
           setActiveContract(null);
           setHistorySession(null);
           setCurrentPage(Page.HISTORY);
       } else {
-          // If in active flow, go back to Privacy Guard
           setCurrentPage(Page.PRIVACY_GUARD);
       }
   };
@@ -256,7 +245,6 @@ const App: React.FC = () => {
                                     <h3 className="font-bold text-gray-800 text-lg group-hover:text-blue-600 transition-colors">{s.contract.fileName}</h3>
                                     <div className="flex gap-4 mt-2 text-sm text-gray-500">
                                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(s.timestamp).toLocaleString()}</span>
-                                        <span>{s.summary?.type || '未知类型'}</span>
                                         <span className="text-red-500">{s.risks.filter(r => r.level === 'HIGH').length} 高危</span>
                                         {s.privacyData && (
                                             <span className="flex items-center gap-1 text-blue-600 bg-blue-50 px-2 rounded-full text-xs">
@@ -348,12 +336,9 @@ const App: React.FC = () => {
     }
   };
 
-  // Determine if the current page handles its own scrolling (Application-like view)
-  // Added Page.KNOWLEDGE to enable full-screen layout for it
   const isAppView = currentPage === Page.PRIVACY_GUARD || currentPage === Page.REVIEW || currentPage === Page.DRAFT || currentPage === Page.KNOWLEDGE;
 
   return (
-    // Changed: h-screen and overflow-hidden to create a fixed viewport application shell
     <div className="h-screen bg-slate-50 text-slate-900 font-sans flex overflow-hidden">
       {/* Upload Guide Modal */}
       {showUploadGuide && (
@@ -399,7 +384,7 @@ const App: React.FC = () => {
           </div>
       )}
 
-      {/* Sidebar - Changed to h-full and overflow-y-auto since parent is fixed */}
+      {/* Sidebar */}
       <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full overflow-y-auto shrink-0">
         <div className="p-6 border-b border-slate-800">
           <div className="flex items-center gap-2 text-white font-bold text-xl">
@@ -444,11 +429,10 @@ const App: React.FC = () => {
 
         <div className="p-6 border-t border-slate-800 text-xs text-slate-500">
           v1.0.0 Alpha <br/>
-          Powered by Gemini 2.5
+          Powered by Gemini 3
         </div>
       </aside>
 
-      {/* Main Content - Conditionally apply overflow logic */}
       <main className={`flex-1 flex flex-col ${isAppView ? 'overflow-hidden' : 'overflow-y-auto w-full'}`}>
         {renderContent()}
       </main>

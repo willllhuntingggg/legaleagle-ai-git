@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ContractData, ContractStance, ReviewStrictness, RiskPoint, RiskLevel, ContractSummary, ReviewSession, PrivacySessionData, MaskingMap, ModelProvider } from '../types';
-import { analyzeContractRisks, generateContractSummary } from '../services/geminiService';
+import { ContractData, ContractStance, ReviewStrictness, RiskPoint, RiskLevel, ReviewSession, PrivacySessionData, MaskingMap, ModelProvider } from '../types';
+import { analyzeContractRisks } from '../services/geminiService';
 import { Check, X, ArrowRight, Download, Loader2, Sparkles, Wand2, ChevronLeft, ChevronRight, AlertTriangle, Shield, PieChart, Eye, EyeOff, Lock, Play, RotateCcw, CheckCircle2, Cpu, Key } from 'lucide-react';
 import * as Diff from 'diff';
 
@@ -14,57 +14,44 @@ interface ReviewInterfaceProps {
 }
 
 export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, initialSession, privacyData, onSaveSession, onBack }) => {
-  // Use masked content if available, otherwise original
   const [currentText, setCurrentText] = useState(privacyData?.maskedContent || contract.content);
-  const [summary, setSummary] = useState<ContractSummary | null>(null);
   const [risks, setRisks] = useState<RiskPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState<string>('');
   
-  // Privacy State
   const [isMaskedView, setIsMaskedView] = useState(!!privacyData);
   const maskMap = useMemo(() => privacyData?.maskMap || {}, [privacyData]);
 
-  // Settings
   const [stance, setStance] = useState<ContractStance>(ContractStance.NEUTRAL);
   const [strictness, setStrictness] = useState<ReviewStrictness>(ReviewStrictness.BALANCED);
-  const [modelProvider, setModelProvider] = useState<ModelProvider>(ModelProvider.GEMINI); 
+  const [modelProvider, setModelProvider] = useState<ModelProvider>(ModelProvider.QWEN); 
   const [apiKey, setApiKey] = useState('');
 
   const [selectedRiskId, setSelectedRiskId] = useState<string | null>(null);
   
-  // UX: History for Undo & Animation States
   const [history, setHistory] = useState<{text: string, risks: RiskPoint[], selectedId: string | null}[]>([]);
   const [isAnimatingSuccess, setIsAnimatingSuccess] = useState(false);
   const [animatingRiskId, setAnimatingRiskId] = useState<string | null>(null);
   const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Refs for scrolling
   const docContainerRef = useRef<HTMLDivElement>(null);
   const highlightRefs = useRef<{[key: string]: HTMLSpanElement | null}>({});
 
-  // Initialize from props
   useEffect(() => {
-    // If we have a previous session, restore it
     if (initialSession) {
         const sessionText = initialSession.privacyData?.maskedContent || initialSession.contract.content;
         setCurrentText(sessionText);
         setRisks(initialSession.risks);
-        setSummary(initialSession.summary);
         if (initialSession.privacyData) {
             setIsMaskedView(true);
         }
     } else {
-        // New Session
         setCurrentText(privacyData?.maskedContent || contract.content);
         setRisks([]);
-        setSummary(null);
         setSelectedRiskId(null);
-        // Do NOT auto-fetch summary on load to avoid API cost/errors before user inputs key
     }
   }, [contract, initialSession, privacyData]);
 
-  // API Key Persistence Logic
   useEffect(() => {
       const savedKey = localStorage.getItem(`apikey_${modelProvider}`);
       if (savedKey) {
@@ -79,7 +66,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
       localStorage.setItem(`apikey_${modelProvider}`, val);
   };
 
-  // Derived State: Valid Risks
   const visibleRisks = useMemo(() => {
     return risks.filter(r => {
         if (r.isAddressed) return true;
@@ -97,7 +83,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
       });
   }, [visibleRisks, currentText]);
 
-  // Auto-scroll effect for selection changes
   useEffect(() => {
     if (selectedRiskId && highlightRefs.current[selectedRiskId]) {
         highlightRefs.current[selectedRiskId]?.scrollIntoView({
@@ -107,14 +92,11 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
     }
   }, [selectedRiskId]);
 
-  // Helper to unmask text
   const unmaskText = (text: string): string => {
       if (!text) return '';
       let result = text;
-      // Sort keys by length desc to avoid partial replacement issues
       const placeholders = Object.keys(maskMap).sort((a, b) => b.length - a.length);
       for (const placeholder of placeholders) {
-          // Global replacement
           result = result.split(placeholder).join(maskMap[placeholder]);
       }
       return result;
@@ -123,15 +105,13 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
   const getModelDescription = (provider: ModelProvider) => {
       switch (provider) {
           case ModelProvider.GEMINI:
-              return 'Google 最新的多模态大模型，逻辑推理能力强。';
+              return 'Google 最新的智能大模型，逻辑推理能力卓越。';
           case ModelProvider.QWEN:
               return '阿里云通义千问，中文语境理解更优。';
           case ModelProvider.KIMI:
               return 'Moonshot Kimi，擅长长文本分析与上下文理解。';
           case ModelProvider.DOUBAO:
               return '字节跳动豆包，响应速度快，性价比高。';
-          case ModelProvider.MIMO:
-              return '小米 MiMo，适合轻量级任务。';
           default:
               return '';
       }
@@ -148,13 +128,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
     const rulesContext = "Standard commercial contract rules, focus on liability caps and payment terms."; 
     
     try {
-      // Parallel fetch summary if not exists
-      if (!summary) {
-          generateContractSummary(currentText, modelProvider, apiKey)
-            .then(s => setSummary(s))
-            .catch(e => console.error("Summary failed", e));
-      }
-
       const identifiedRisks = await analyzeContractRisks(currentText, stance, strictness, rulesContext, modelProvider, apiKey);
       
       const sortedRisks = identifiedRisks.sort((a, b) => {
@@ -168,7 +141,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
       onSaveSession({
           id: Date.now().toString(),
           contract: { ...contract, content: currentText },
-          summary,
           risks: sortedRisks,
           timestamp: Date.now(),
           privacyData: privacyData || undefined
@@ -450,17 +422,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                     </span>
                 )}
             </h2>
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              {summary ? (
-                <>
-                  <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{summary.type}</span>
-                  <span>|</span>
-                  <span>{summary.amount}</span>
-                </>
-              ) : (
-                <span>等待分析...</span>
-              )}
-            </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -520,9 +481,10 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                             }}
                             className="w-full p-3 pl-10 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
                         >
-                            {Object.values(ModelProvider).map(m => (
-                                <option key={m} value={m}>{m}</option>
-                            ))}
+                            <option value={ModelProvider.QWEN}>{ModelProvider.QWEN}</option>
+                            <option value={ModelProvider.KIMI}>{ModelProvider.KIMI}</option>
+                            <option value={ModelProvider.DOUBAO}>{ModelProvider.DOUBAO}</option>
+                            <option value={ModelProvider.GEMINI}>{ModelProvider.GEMINI}</option>
                         </select>
                         <Cpu className="w-4 h-4 text-gray-500 absolute left-3 top-3.5" />
                     </div>
@@ -598,7 +560,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
             </div>
           )}
 
-          {/* 2. Dashboard Overview (Same as before) */}
+          {/* 2. Dashboard Overview */}
           {risks.length > 0 && (
             <div className="flex flex-col h-full bg-slate-50/50">
                 <div className="p-6 border-b bg-white">
@@ -704,7 +666,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                      {/* Reset Button */}
                      <div className="pt-4 border-t border-gray-200">
                         <button 
-                            onClick={() => { setRisks([]); setSummary(null); }}
+                            onClick={() => { setRisks([]); }}
                             className="w-full py-2.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
                         >
                             重新开始新的审查
@@ -716,7 +678,7 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
         </div>
       </div>
 
-      {/* 3. Risk Detail Drawer (Same as before) */}
+      {/* 3. Risk Detail Drawer */}
       {selectedRisk && (
         <div className="fixed top-0 right-0 bottom-0 w-[450px] bg-white shadow-[0_0_50px_-12px_rgba(0,0,0,0.25)] border-l border-gray-200 z-[60] flex flex-col animate-in slide-in-from-right duration-300">
             {isAnimatingSuccess ? (

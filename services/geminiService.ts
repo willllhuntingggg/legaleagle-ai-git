@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { ContractStance, ReviewStrictness, RiskLevel, ContractSummary, RiskPoint, ModelProvider } from "../types";
+import { ContractStance, ReviewStrictness, RiskLevel, RiskPoint, ModelProvider } from "../types";
 
 // --- Helpers ---
 
@@ -20,11 +20,10 @@ const callAIProvider = async (
         if (provider === ModelProvider.GEMINI) {
             const ai = new GoogleGenAI({ apiKey: userApiKey });
             
-            // Extract prompt from messages (Simplified for single turn or system+user)
             const systemMsg = messages.find(m => m.role === 'system')?.content;
             const userMsg = messages.find(m => m.role === 'user')?.content;
 
-            const modelId = 'gemini-2.5-flash';
+            const modelId = 'gemini-3-pro-preview';
             
             const generateConfig: any = {
                 responseMimeType: config.responseMimeType,
@@ -45,7 +44,7 @@ const callAIProvider = async (
             return result.text || "";
         }
         
-        // 2. Alibaba Qwen (Direct Fetch - requires CORS support from provider or browser extension)
+        // 2. Alibaba Qwen
         else if (provider === ModelProvider.QWEN) {
             const resp = await fetch("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", {
                 method: 'POST',
@@ -100,7 +99,7 @@ const callAIProvider = async (
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: "doubao-seed-1-6-lite-251015", // Note: This often requires a specific endpoint ID in reality
+                    model: "doubao-seed-1-6-lite-251015",
                     messages: messages,
                     stream: false
                 })
@@ -110,32 +109,15 @@ const callAIProvider = async (
             return data.choices?.[0]?.message?.content || "";
         }
 
-        // 5. Xiaomi MiMo
-        else if (provider === ModelProvider.MIMO) {
-             // Mock implementation for MiMo as it likely doesn't have a public CORS-enabled API key endpoint standard yet
-             console.warn("MiMo direct API not fully standard, using mock behavior for demo.");
-             throw new Error("MiMo API connection failed (CORS/Network).");
-        }
-
         throw new Error("Unknown Provider");
 
     } catch (e: any) {
         console.error(`${provider} Request Failed`, e);
         
-        // Fallback Mock Logic for Demo purposes if API fails (e.g. CORS or Invalid Key)
-        if (e.message.includes("Failed to fetch") || e.message.includes("CORS") || e.message.includes("MiMo")) {
-             console.warn("Network/CORS error detected, falling back to Mock response for demo continuity.");
+        if (e.message.includes("Failed to fetch") || e.message.includes("CORS")) {
+             console.warn("Network/CORS error detected, falling back to Mock response.");
              const lastMsg = messages[messages.length-1].content;
              
-             if (lastMsg.includes("extract key information")) {
-                 return JSON.stringify({
-                     type: "Mocked Agreement",
-                     parties: ["Demo Client", "Demo Provider"],
-                     amount: "100,000 CNY",
-                     duration: "1 Year",
-                     mainSubject: "This is a local fallback summary because the API call failed (likely due to CORS or invalid Key)."
-                 });
-             }
              if (lastMsg.includes("Identify risks")) {
                  return JSON.stringify([{
                      originalText: "Provider's total liability... limited to $5,000",
@@ -185,60 +167,12 @@ const safeJsonParse = (text: string, defaultVal: any) => {
 
 // --- Services ---
 
-export const generateContractSummary = async (text: string, provider: ModelProvider = ModelProvider.GEMINI, apiKey?: string): Promise<ContractSummary> => {
-  const promptText = `
-    Analyze the following legal contract text and extract key information. 
-    Return a JSON object with keys: type, parties (array), amount, duration, mainSubject.
-    
-    Text: "${text.substring(0, 10000)}..."
-  `;
-
-  const messages = [
-      { role: "system", content: "You are a legal assistant. Respond in pure JSON." },
-      { role: "user", content: promptText }
-  ];
-
-  // Schema for Gemini
-  const geminiSchema: any = {
-    type: Type.OBJECT,
-    properties: {
-      type: { type: Type.STRING },
-      parties: { type: Type.ARRAY, items: { type: Type.STRING } },
-      amount: { type: Type.STRING },
-      duration: { type: Type.STRING },
-      mainSubject: { type: Type.STRING },
-    },
-    required: ["type", "parties", "amount", "duration", "mainSubject"],
-  };
-
-  try {
-      const config = {
-          responseMimeType: "application/json",
-          responseSchema: provider === ModelProvider.GEMINI ? geminiSchema : undefined,
-          jsonMode: true
-      };
-
-      const content = await callAIProvider(provider, messages, config, apiKey || "");
-      return safeJsonParse(content, getUnknownSummary("Could not analyze text."));
-  } catch (e: any) {
-      return getUnknownSummary(`${e.message}`);
-  }
-};
-
-const getUnknownSummary = (reason: string): ContractSummary => ({
-    type: "Unknown",
-    parties: [],
-    amount: "Unknown",
-    duration: "Unknown",
-    mainSubject: reason
-});
-
 export const analyzeContractRisks = async (
   text: string, 
   stance: ContractStance, 
   strictness: ReviewStrictness,
   rulesContext: string,
-  provider: ModelProvider = ModelProvider.GEMINI,
+  provider: ModelProvider = ModelProvider.QWEN,
   apiKey?: string
 ): Promise<RiskPoint[]> => {
   const systemPrompt = `
@@ -308,7 +242,7 @@ export const analyzeContractRisks = async (
   }
 };
 
-export const draftNewContract = async (type: string, requirements: string, provider: ModelProvider = ModelProvider.GEMINI, apiKey?: string): Promise<string> => {
+export const draftNewContract = async (type: string, requirements: string, provider: ModelProvider = ModelProvider.QWEN, apiKey?: string): Promise<string> => {
   const prompt = `
     Draft a professional legal contract.
     Type: ${type}

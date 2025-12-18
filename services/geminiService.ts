@@ -20,7 +20,6 @@ const callAIProvider = async (
         if (provider === ModelProvider.GEMINI) {
             const ai = new GoogleGenAI({ apiKey: userApiKey });
             
-            // Extract prompt from messages (Simplified for single turn or system+user)
             const systemMsg = messages.find(m => m.role === 'system')?.content;
             const userMsg = messages.find(m => m.role === 'user')?.content;
 
@@ -45,7 +44,7 @@ const callAIProvider = async (
             return result.text || "";
         }
         
-        // 2. Alibaba Qwen (Direct Fetch - requires CORS support from provider or browser extension)
+        // 2. Alibaba Qwen
         else if (provider === ModelProvider.QWEN) {
             const resp = await fetch("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", {
                 method: 'POST',
@@ -100,7 +99,7 @@ const callAIProvider = async (
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: "doubao-seed-1-6-lite-251015", // Note: This often requires a specific endpoint ID in reality
+                    model: "doubao-seed-1-6-lite-251015",
                     messages: messages,
                     stream: false
                 })
@@ -110,11 +109,30 @@ const callAIProvider = async (
             return data.choices?.[0]?.message?.content || "";
         }
 
-        // 5. Xiaomi MiMo
+        // 5. Xiaomi MiMo (兼容 OpenAI 接口)
         else if (provider === ModelProvider.MIMO) {
-             // Mock implementation for MiMo as it likely doesn't have a public CORS-enabled API key endpoint standard yet
-             console.warn("MiMo direct API not fully standard, using mock behavior for demo.");
-             throw new Error("MiMo API connection failed (CORS/Network).");
+             const resp = await fetch("https://api.xiaomimimo.com/v1/chat/completions", {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${userApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: "mimo-1.0",
+                    messages: messages,
+                    temperature: config.temperature || 0.2,
+                    response_format: config.jsonMode ? { type: "json_object" } : undefined,
+                    stream: false
+                })
+            });
+            
+            if (!resp.ok) {
+                const errText = await resp.text();
+                throw new Error(`Xiaomi MiMo Error: ${errText}`);
+            }
+            
+            const data = await resp.json();
+            return data.choices?.[0]?.message?.content || "";
         }
 
         throw new Error("Unknown Provider");
@@ -122,25 +140,25 @@ const callAIProvider = async (
     } catch (e: any) {
         console.error(`${provider} Request Failed`, e);
         
-        // Fallback Mock Logic for Demo purposes if API fails (e.g. CORS or Invalid Key)
-        if (e.message.includes("Failed to fetch") || e.message.includes("CORS") || e.message.includes("MiMo")) {
-             console.warn("Network/CORS error detected, falling back to Mock response for demo continuity.");
+        // 仅在明确的网络错误且无法通过 API 获取数据时提供 Mock 兜底，防止白屏
+        if (e.message.includes("Failed to fetch") || e.message.includes("CORS")) {
+             console.warn("检测到网络或跨域错误，启用本地 Mock 演示数据。");
              const lastMsg = messages[messages.length-1].content;
              
              if (lastMsg.includes("extract key information")) {
                  return JSON.stringify({
-                     type: "Mocked Agreement",
-                     parties: ["Demo Client", "Demo Provider"],
+                     type: "演示协议 (Mock)",
+                     parties: ["测试甲方", "测试乙方"],
                      amount: "100,000 CNY",
                      duration: "1 Year",
-                     mainSubject: "This is a local fallback summary because the API call failed (likely due to CORS or invalid Key)."
+                     mainSubject: "这是由于 API 跨域或网络失败时触发的本地模拟数据。"
                  });
              }
              if (lastMsg.includes("Identify risks")) {
                  return JSON.stringify([{
                      originalText: "Provider's total liability... limited to $5,000",
-                     riskDescription: "Liability Cap Too Low (Local Mock)",
-                     reason: "API call failed. Please check console for CORS errors. This is a simulated risk.",
+                     riskDescription: "赔偿限额过低",
+                     reason: "API 调用失败。这只是一个本地模拟的风险示例。请确保已开启跨域插件或配置了正确的 API 地址。",
                      level: "HIGH",
                      suggestedText: "Provider's total liability shall match the Contract Price."
                  }]);
@@ -178,7 +196,6 @@ const safeJsonParse = (text: string, defaultVal: any) => {
                 return JSON.parse(text.substring(start, end + 1));
             }
         } catch (e3) {}
-        console.error("JSON Parsing failed", text.substring(0, 100));
         return defaultVal;
     }
 };
@@ -198,7 +215,6 @@ export const generateContractSummary = async (text: string, provider: ModelProvi
       { role: "user", content: promptText }
   ];
 
-  // Schema for Gemini
   const geminiSchema: any = {
     type: Type.OBJECT,
     properties: {

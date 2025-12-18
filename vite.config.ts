@@ -1,23 +1,19 @@
-import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
-    return {
-      server: {
-        port: 3000,
-        host: '0.0.0.0',
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  // 设置为相对路径，确保打包后在任何目录下都能正确加载资源
+  base: './',
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    // 确保构建时能正确处理入口文件
+    rollupOptions: {
+      input: {
+        main: './index.html',
       },
-      plugins: [react()],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-      },
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, '.'),
-        }
-      }
-    };
+    },
+  },
 });

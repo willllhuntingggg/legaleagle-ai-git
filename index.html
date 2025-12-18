@@ -33,12 +33,16 @@
     "react-dom/": "https://esm.sh/react-dom@^19.2.1/",
     "@google/genai": "https://esm.sh/@google/genai@^1.33.0",
     "lucide-react": "https://esm.sh/lucide-react@^0.559.0",
-    "diff": "https://esm.sh/diff@^8.0.2"
+    "diff": "https://esm.sh/diff@^8.0.2",
+    "vite": "https://esm.sh/vite@^7.3.0",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
   }
 }
 </script>
 </head>
   <body class="bg-slate-50 text-slate-900 font-sans antialiased">
     <div id="root"></div>
+    <!-- 显式添加入口文件，解决 Vite 构建后的加载问题 -->
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

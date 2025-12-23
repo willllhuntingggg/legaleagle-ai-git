@@ -18,10 +18,9 @@ const REGEX_PATTERNS = [
     { 
         id: 'money',
         label: '金额 (Money)', 
-        // Improved Regex:
-        // 1. Symbols: Matches $, ¥, ￥(fullwidth), £, €, RMB, CNY
-        // 2. Formats: 100,000.00 | 4万 | 100元 | 100美金
-        regex: /((RMB|CNY|¥|￥|\$|€|£)\s?([1-9]\d{0,2}(,\d{3})*|0)(\.\d{1,2})?)|(([1-9]\d{0,2}(,\d{3})*|0)(\.\d{1,2})?\s?(元|万元|亿元|万|亿|USD|Dollars|美金))/gi,
+        // Logic: (Currency Prefix + Number/Chinese + Optional Unit Suffix) OR (Number/Chinese + Required Unit Suffix)
+        // This ensures amounts like ￥377,358.49 are captured even without a trailing "元"
+        regex: /(人民币|RMB|CNY|¥|￥|\$|€|£)\s?(([1-9]\d{0,2}(,\d{3})*|0)(\.\d{1,2})?|[零壹贰叁肆伍陆柒捌玖拾佰仟万亿]+)(\s?(元|万元|亿元|万|亿|USD|Dollars|美金|整|角|分)){0,2}|(([1-9]\d{0,2}(,\d{3})*|0)(\.\d{1,2})?|[零壹贰叁肆伍陆柒捌玖拾佰仟万亿]+)\s?(元|万元|亿元|万|亿|USD|Dollars|美金|整|角|分){1,2}/gi,
         prefix: '[AMOUNT_' 
     },
     { 
@@ -39,20 +38,15 @@ const REGEX_PATTERNS = [
     { 
         id: 'phone',
         label: '电话/传真 (Tel/Fax)', 
-        // Matches: 
-        // 1. Mobile (11 digits, optional +86)
-        // 2. Landline with loose spacing (010- 12345678)
-        // 3. ID cards (15 or 18 digits)
-        regex: /((\+?86)?\s?1[3-9]\d{9})|(\d{3,4}\s*[-]\s*\d{7,8})|(\d{15}|\d{18})/g, 
+        // Added \b boundaries to prevent partial matches of longer digit strings (like bank cards)
+        regex: /\b((\+?86)?\s?1[3-9]\d{9})\b|\b(\d{3,4}\s*[-]\s*\d{7,8})\b|\b(\d{15}|\d{18})\b/g, 
         prefix: '[PHONE_' 
     },
     { 
         id: 'bank',
         label: '银行卡号 (Bank Card)', 
-        // 12 to 30 digits. 
-        // Uses \b for standard numbers, but allows non-boundary matches for long continuous digits 
-        // to catch cases like ID331156037195 where \b would fail after 'D'.
-        regex: /(?:\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{0,10}\b)|(?:\d{12,30})/g, 
+        // Ensure bank cards are captured as full blocks
+        regex: /\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4,14}\b|\b\d{12,30}\b/g, 
         prefix: '[BANK_' 
     }
 ];
@@ -60,7 +54,6 @@ const REGEX_PATTERNS = [
 export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onComplete, onSkip }) => {
     // Selection State
     const [manualRules, setManualRules] = useState<ManualRule[]>([]);
-    // Default active regexes: REMOVED 'company' entirely
     const [activeRegexes, setActiveRegexes] = useState<Set<string>>(new Set(['money', 'email', 'date', 'phone', 'bank']));
     
     // UI State
@@ -81,26 +74,16 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
         const map: MaskingMap = {};
         let totalCount = 0;
         
-        // 1. Apply Manual Rules First (User defined entities usually take precedence)
-        // Sort by length desc to prevent partial replacements (e.g. mask "Tech" inside "TechCorp")
+        // 1. Apply Manual Rules First
         const sortedRules = [...manualRules].sort((a, b) => b.target.length - a.target.length);
         
         sortedRules.forEach(rule => {
             if (!rule.target) return;
-            // Escape special regex chars in target string to ensure safe regex creation
             let patternString = rule.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            
-            // SMART BRACKET SUBSTITUTION:
-            // If the user selected text with brackets, we want to match BOTH full-width '（）' and half-width '()'
-            // regardless of which one they selected.
-            // Replace literal (escaped) '(' or raw '（' with class containing both
             patternString = patternString.replace(/(\\\(|（)/g, '[\\(（]');
-            // Replace literal (escaped) ')' or raw '）' with class containing both
             patternString = patternString.replace(/(\\\)|）)/g, '[\\)）]');
 
-            // Global flag 'g' ensures ALL instances are replaced throughout the document
             const regex = new RegExp(patternString, 'g');
-            
             const matches = text.match(regex);
             if (matches) {
                 totalCount += matches.length;
@@ -128,12 +111,8 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
 
     const handleTextMouseUp = () => {
         const selectionObj = window.getSelection();
-        
-        // Ensure we have a valid selection that is not empty
         if (selectionObj && selectionObj.toString().trim().length > 0) {
             const text = selectionObj.toString().trim();
-            
-            // Prevent selecting text that includes already masked tags (simple heuristic)
             if (text.includes('[') && text.includes(']')) {
                 setSelection('');
                 setPopupPos(null);
@@ -141,20 +120,14 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
             }
 
             setSelection(text);
-            
-            // Default placeholder suggestion
             if (!customPlaceholder) {
                 setCustomPlaceholder('[PARTY_A]');
             }
 
-            // Calculate position relative to the scrolling container
             if (selectionObj.rangeCount > 0 && containerRef.current) {
                 const range = selectionObj.getRangeAt(0);
                 const rect = range.getBoundingClientRect();
                 const containerRect = containerRef.current.getBoundingClientRect();
-                
-                // Position popup centered below the selection
-                // Add scrollTop to ensure it stays correct when scrolled
                 setPopupPos({
                     top: rect.bottom - containerRect.top + containerRef.current.scrollTop + 10,
                     left: rect.left - containerRect.left + (rect.width / 2)
@@ -168,20 +141,15 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
 
     const addManualRule = () => {
         if (selection && customPlaceholder) {
-            // Remove any existing rules that might conflict (optional, but cleaner)
             const newRules = manualRules.filter(r => r.target !== selection);
             setManualRules([...newRules, {
                 id: Date.now().toString(),
                 target: selection,
                 placeholder: customPlaceholder
             }]);
-            
-            // Reset interactions
             setSelection('');
             setCustomPlaceholder('');
             setPopupPos(null);
-            
-            // Clear browser selection
             window.getSelection()?.removeAllRanges();
         }
     };
@@ -201,11 +169,10 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
         const original = computedData.map[tag];
         if (original) {
             const rect = (e.target as HTMLElement).getBoundingClientRect();
-            // Show tooltip above the element
             setHoverTooltip({
                 text: original,
                 x: rect.left + rect.width / 2,
-                y: rect.top - 8 // Slight gap
+                y: rect.top - 8
             });
         }
     };
@@ -216,7 +183,6 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
 
     return (
         <div className="flex flex-col h-full bg-slate-50 relative">
-            {/* Custom Tooltip */}
             {hoverTooltip && (
                 <div 
                     className="fixed z-[100] px-3 py-1.5 bg-gray-900 text-white text-xs rounded shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full whitespace-nowrap animate-in fade-in duration-75 font-mono"
@@ -228,7 +194,6 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                 </div>
             )}
 
-            {/* Header */}
             <div className="bg-slate-900 px-6 py-4 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
                     <div className="bg-blue-500/20 p-2 rounded-lg border border-blue-400/30">
@@ -257,7 +222,6 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
             </div>
 
             <div className="flex flex-1 overflow-hidden">
-                {/* Left: Text Editor/Preview */}
                 <div className="flex-1 flex flex-col border-r border-gray-200 bg-white">
                     <div className="p-4 border-b flex justify-between items-center bg-gray-50/50 shrink-0">
                         <div className="flex bg-gray-200 rounded-lg p-1">
@@ -283,7 +247,6 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-8 relative scroll-smooth" ref={containerRef}>
-                         {/* Render Computed Text with interactive capabilities */}
                          <div 
                             ref={textRef}
                             onMouseUp={handleTextMouseUp}
@@ -293,11 +256,8 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                                  <span>{originalContent}</span>
                              ) : (
                                  computedData.text.split(/(\[.*?\])/g).map((part, idx) => {
-                                     // Identify tags and render them as chips
                                      if (part.startsWith('[') && part.endsWith(']')) {
-                                         // Check if this tag comes from a manual rule or regex (for styling)
                                          const isManual = manualRules.some(r => r.placeholder === part);
-                                         
                                          return (
                                              <span 
                                                 key={idx} 
@@ -317,11 +277,10 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                              )}
                          </div>
                          
-                         {/* Selection Float Menu - Absolutely positioned relative to container */}
                          {selection && popupPos && (
                              <div 
                                 style={{ top: popupPos.top, left: popupPos.left }}
-                                onMouseUp={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+                                onMouseUp={(e) => e.stopPropagation()}
                                 className="absolute -translate-x-1/2 bg-slate-800 text-white p-5 rounded-xl shadow-2xl flex flex-col gap-4 w-80 animate-in fade-in zoom-in-95 duration-150 z-50 origin-top border border-slate-700"
                              >
                                  <div className="flex justify-between items-start border-b border-slate-700 pb-3">
@@ -379,28 +338,20 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                                          </button>
                                      ))}
                                  </div>
-                                 
-                                 {/* Arrow Pointer */}
                                  <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-slate-800 rotate-45 border-t border-l border-slate-700"></div>
                              </div>
                          )}
                     </div>
                 </div>
 
-                {/* Right: Rules Panel - Unified Scroll View */}
                 <div className="w-80 bg-slate-50 border-l border-gray-200 flex flex-col shrink-0 h-full">
-                    {/* Unified Scrolling Container */}
                     <div className="flex-1 overflow-y-auto relative scroll-smooth">
-                        
-                        {/* Section 1: Regex - Sticky Header */}
                         <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm p-5 border-b border-gray-200 shadow-sm">
                             <h3 className="font-bold text-gray-800 flex items-center gap-2">
                                 <Wand2 className="w-4 h-4 text-purple-600" />
                                 自动规则 (Regex)
                             </h3>
                         </div>
-                        
-                        {/* Regex List */}
                         <div className="p-4 space-y-3 bg-slate-50">
                             {REGEX_PATTERNS.map(p => (
                                 <label key={p.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:border-blue-300 transition-all select-none">
@@ -418,8 +369,6 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                             ))}
                         </div>
 
-                        {/* Section 2: Manual - Sticky Header */}
-                        {/* Note: 'sticky top-0' works by stacking or pushing previous sticky elements if they are siblings in the same scroll container. */}
                         <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm p-5 border-b border-gray-200 border-t shadow-sm">
                             <h3 className="font-bold text-gray-800 flex items-center gap-2">
                                 <Highlighter className="w-4 h-4 text-blue-600" />
@@ -427,7 +376,6 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                             </h3>
                         </div>
 
-                        {/* Manual List */}
                         <div className="p-4 space-y-2 bg-slate-50 min-h-[150px]">
                             {manualRules.length === 0 ? (
                                 <div className="text-center py-8 text-gray-400 text-sm">
@@ -455,7 +403,6 @@ export const PrivacyGuard: React.FC<PrivacyGuardProps> = ({ originalContent, onC
                         </div>
                     </div>
                     
-                    {/* Stats Footer - Fixed at bottom */}
                     <div className="p-4 bg-white border-t border-gray-200 text-xs text-gray-500 flex justify-between shrink-0 z-20">
                          <span>已掩盖敏感词:</span>
                          <span className="font-bold text-gray-800">{computedData.totalCount} 处</span>

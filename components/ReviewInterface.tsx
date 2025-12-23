@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ContractData, ContractStance, ReviewStrictness, RiskPoint, RiskLevel, ReviewSession, PrivacySessionData, MaskingMap, ModelProvider, KnowledgeRule } from '../types';
 import { analyzeContractRisks } from '../services/geminiService';
@@ -13,6 +12,15 @@ interface ReviewInterfaceProps {
   onSaveSession: (session: ReviewSession) => void;
   onBack: () => void;
 }
+
+const STANDARD_LEGAL_GUIDELINES = `
+- Liability Caps: Ensure total liability is limited to 100% of the contract value; avoid unlimited liability.
+- Payment Terms: Standard payment period should not exceed 60 days.
+- Termination: Ensure mutual termination rights with reasonable notice periods (e.g., 30 days).
+- Confidentiality: Standard confidentiality clauses should protect both parties' sensitive information.
+- Force Majeure: Check for clear definitions and notice requirements.
+- Indemnification: Ensure indemnity obligations are balanced and not one-sided.
+`;
 
 export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, initialSession, privacyData, knowledgeRules, onSaveSession, onBack }) => {
   const [currentText, setCurrentText] = useState(privacyData?.maskedContent || contract.content);
@@ -103,21 +111,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
       return result;
   };
 
-  const getModelDescription = (provider: ModelProvider) => {
-      switch (provider) {
-          case ModelProvider.GEMINI:
-              return 'Google 最新的智能大模型，逻辑推理能力卓越。';
-          case ModelProvider.QWEN:
-              return '阿里云通义千问，中文语境理解更优。';
-          case ModelProvider.KIMI:
-              return 'Moonshot Kimi，擅长长文本分析与上下文理解。';
-          case ModelProvider.DOUBAO:
-              return '字节跳动豆包，响应速度快，性价比高。';
-          default:
-              return '';
-      }
-  };
-
   const handleAnalyze = async () => {
     if (!apiKey) {
         alert("请输入 API Key 后再开始审查");
@@ -127,10 +120,18 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
     setLoading(true);
     setLoadingStep(`正在调用 ${modelProvider.split(' ')[0]} 分析合同条款...`);
     
-    // 构建知识库上下文：合并系统默认规则与用户自定义规则
-    const rulesContext = knowledgeRules.length > 0 
+    // 构建知识库上下文：始终包含标准准则 + 用户自定义准则
+    const customRulesText = knowledgeRules.length > 0 
         ? knowledgeRules.map(r => `[${r.name}] (${r.riskLevel}风险): ${r.description}`).join('\n')
-        : "Standard commercial contract rules, focus on liability caps and payment terms."; 
+        : "No custom rules provided.";
+
+    const rulesContext = `
+[STANDARD COMMERCIAL RULES (BASELINE)]:
+${STANDARD_LEGAL_GUIDELINES}
+
+[USER-DEFINED CUSTOM KNOWLEDGE RULES]:
+${customRulesText}
+    `.trim();
     
     try {
       const identifiedRisks = await analyzeContractRisks(currentText, stance, strictness, rulesContext, modelProvider, apiKey);
@@ -541,9 +542,11 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
                 <div className="p-4 bg-purple-50 border border-purple-100 rounded-lg">
                     <div className="flex items-center gap-2 mb-2">
                         <Shield className="w-4 h-4 text-purple-600" />
-                        <span className="text-xs font-bold text-purple-700">已加载 {knowledgeRules.length} 条知识库规则</span>
+                        <span className="text-xs font-bold text-purple-700">知识库状态</span>
                     </div>
-                    <p className="text-[10px] text-purple-500">AI 将严格遵循这些规则进行风险排查。</p>
+                    <p className="text-[10px] text-purple-500 leading-tight">
+                        已加载标准准则 + {knowledgeRules.length} 条自定义规则。
+                    </p>
                 </div>
 
                 <button 
@@ -567,7 +570,6 @@ export const ReviewInterface: React.FC<ReviewInterfaceProps> = ({ contract, init
             </div>
           )}
 
-          {/* 后续面板保持不变 */}
           {risks.length > 0 && (
             <div className="flex flex-col h-full bg-slate-50/50">
                 <div className="p-6 border-b bg-white">

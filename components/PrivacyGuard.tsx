@@ -14,9 +14,9 @@ const REGEX_PATTERNS = [
     { 
         id: 'money',
         label: '金额 (Money)', 
-        // Logic: (Currency Prefix + Number/Chinese + Optional Unit Suffix) OR (Number/Chinese + Required Unit Suffix)
-        // This ensures amounts like ￥377,358.49 are captured even without a trailing "元"
-        regex: /(人民币|RMB|CNY|¥|￥|\$|€|£)\s?(([1-9]\d{0,2}(,\d{3})*|0)(\.\d{1,2})?|[零壹贰叁肆伍陆柒捌玖拾佰仟万亿]+)(\s?(元|万元|亿元|万|亿|USD|Dollars|美金|整|角|分)){0,2}|(([1-9]\d{0,2}(,\d{3})*|0)(\.\d{1,2})?|[零壹贰叁肆伍陆柒捌玖拾佰仟万亿]+)\s?(元|万元|亿元|万|亿|USD|Dollars|美金|整|角|分){1,2}/gi,
+        // Bugfix 1: Use `((\d{1,3}(,\d{3})+)|(\d+))` to ensure greedy matching doesn't split large integers like 1000000.
+        // Bugfix 2: Use `分(?!钟)` to prevent "30分钟" being matched as money.
+        regex: /(人民币|RMB|CNY|¥|￥|\$|€|£)\s?(((\d{1,3}(,\d{3})+)|(\d+))(\.\d{1,2})?|[零壹贰叁肆伍陆柒捌玖拾佰仟万亿]+)(\s?(元|万元|亿元|万|亿|USD|Dollars|美金|整|角|分(?!钟))){0,2}|(((\d{1,3}(,\d{3})+)|(\d+))(\.\d{1,2})?|[零壹贰叁肆伍陆柒捌玖拾佰仟万亿]+)\s?(元|万元|亿元|万|亿|USD|Dollars|美金|整|角|分(?!钟)){1,2}/gi,
         prefix: '[AMOUNT_' 
     },
     { 

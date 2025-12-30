@@ -42,6 +42,12 @@ export interface KnowledgeRule {
   riskLevel: RiskLevel;
 }
 
+export interface SensitiveWord {
+  id: string;
+  target: string;
+  placeholder: string;
+}
+
 export interface ContractData {
   fileName: string;
   content: string;

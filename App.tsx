@@ -5,7 +5,7 @@ import { ReviewInterface } from './components/ReviewInterface';
 import { KnowledgeBase } from './components/KnowledgeBase';
 import { ContractDrafting } from './components/ContractDrafting';
 import { PrivacyGuard } from './components/PrivacyGuard';
-import { ContractData, ReviewSession, PrivacySessionData, MaskingMap, KnowledgeRule, RiskLevel } from './types';
+import { ContractData, ReviewSession, PrivacySessionData, MaskingMap, KnowledgeRule, RiskLevel, SensitiveWord } from './types';
 
 const DEMO_CONTRACT_TEXT = `CONTRACT FOR SERVICES
 
@@ -46,6 +46,7 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [sessions, setSessions] = useState<ReviewSession[]>([]);
   const [knowledgeRules, setKnowledgeRules] = useState<KnowledgeRule[]>([]);
+  const [sensitiveWords, setSensitiveWords] = useState<SensitiveWord[]>([]);
   
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [showUploadGuide, setShowUploadGuide] = useState(false);
@@ -61,6 +62,11 @@ const App: React.FC = () => {
         } else {
             setKnowledgeRules(DEFAULT_RULES);
         }
+
+        const savedSensitiveWords = localStorage.getItem('legalEagle_sensitiveWords');
+        if (savedSensitiveWords) {
+            setSensitiveWords(JSON.parse(savedSensitiveWords));
+        }
     } catch (e) {
         console.error("Failed to load local data", e);
     }
@@ -75,6 +81,11 @@ const App: React.FC = () => {
   const updateKnowledgeRules = (newRules: KnowledgeRule[]) => {
       setKnowledgeRules(newRules);
       localStorage.setItem('legalEagle_rules', JSON.stringify(newRules));
+  };
+
+  const updateSensitiveWords = (newWords: SensitiveWord[]) => {
+      setSensitiveWords(newWords);
+      localStorage.setItem('legalEagle_sensitiveWords', JSON.stringify(newWords));
   };
 
   const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -163,6 +174,8 @@ const App: React.FC = () => {
         return (
             <PrivacyGuard 
                 originalContent={activeContract.content}
+                sensitiveWords={sensitiveWords}
+                onUpdateSensitiveWords={updateSensitiveWords}
                 onComplete={(masked, map) => {
                     setPrivacyData({ originalContent: activeContract.content, maskedContent: masked, maskMap: map, isMasked: true });
                     setCurrentPage(Page.REVIEW);
